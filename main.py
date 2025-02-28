@@ -2,17 +2,14 @@ from fastapi import FastAPI, Query, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 import os
-from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 from database import SessionLocal, Like, Comment
 
-# Load environment variables
-load_dotenv()
-
-VIDEOS_URL = os.getenv("VIDEOS_URL")
-SEARCH_URL = os.getenv("SEARCH_URL")
-CHANNEL_URL = os.getenv("CHANNEL_URL")
-SHOWCASE_URL = os.getenv("SHOWCASE_URL")
+# ✅ Hardcoded URLs (No .env)
+VIDEOS_URL = "https://v1.nocodeapi.com/marcuzac/vimeo/lESGxjgGbrXQgcgJ/videos"
+SEARCH_URL = "https://v1.nocodeapi.com/marcuzac/vimeo/lESGxjgGbrXQgcgJ/search"
+CHANNEL_URL = "https://v1.nocodeapi.com/marcuzac/vimeo/lESGxjgGbrXQgcgJ/channelVideos"
+SHOWCASE_URL = "https://v1.nocodeapi.com/marcuzac/vimeo/lESGxjgGbrXQgcgJ/showcaseVideos"
 
 app = FastAPI()
 
