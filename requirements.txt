@@ -35,7 +35,7 @@ python-dotenv==1.0.1
 python-jose==3.4.0
 python-multipart==0.0.20
 PyVimeo==1.1.2
-#requests==2.32.3
+requests==2.32.3  # Uncommented this line
 rsa==4.9
 simplejson==3.20.1
 six==1.17.0
@@ -47,5 +47,4 @@ tuspy==1.1.0
 typing_extensions==4.12.2
 urllib3==2.3.0
 uvicorn==0.34.0
-vimeo==0.1.9
 yarl==1.18.3
