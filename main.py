@@ -1,15 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from database import engine
-import models
+from database import get_db
 from auth import router as auth_router
 from routers import users, videos, categories
-from sqlalchemy.ext.asyncio import AsyncSession
 
 app = FastAPI(
     title="Video API",
-    description="A Video streaming application for managing videos based on subcription.",
+    description="A Video streaming application for managing videos based on subscription.",
     version="1.0.0",
     redoc_url="/redoc", 
     docs_url="/docs",  
@@ -24,7 +22,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Get database instance
+db = get_db()
+
+# Include routers with MongoDB dependency
 app.include_router(auth_router)
 app.include_router(users.router)
 app.include_router(videos.router)
@@ -34,3 +35,9 @@ app.include_router(categories.router)
 @app.get("/")
 def read_root():
     return RedirectResponse(url="/redoc")
+
+# Example route to test MongoDB connection
+@app.get("/test-db")
+async def test_db():
+    collections = await db.list_collection_names()
+    return {"collections": collections}
