@@ -1,40 +1,27 @@
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker, declarative_base
+from config import settings
 
-# Database connection URL
-DATABASE_URL = "sqlite:///./database.db"
+engine = create_async_engine(
+    settings.DATABASE_URL,
+    connect_args={
+        "statement_cache_size": 0,
+        "max_cacheable_statement_size": 0,
+        "prepared_statement_cache_size": 0
+    },
+    pool_size=20,
+    max_overflow=10,
+    pool_recycle=3600,
+    pool_pre_ping=True
+)
 
-# Creating database engine
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-
-# Creating a session
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Creating a base class for models
+async_session = sessionmaker(
+    engine, 
+    class_=AsyncSession,
+    expire_on_commit=False
+)
 Base = declarative_base()
 
-# Like model
-class Like(Base):
-    __tablename__ = "likes"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, nullable=False)
-    video_id = Column(String, nullable=False)
-
-# Comment model
-class Comment(Base):
-    __tablename__ = "comments"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, nullable=False)
-    video_id = Column(String, nullable=False)
-    text = Column(String, nullable=False)
-
-# Function to get database session
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def get_db():
+    async with async_session() as session:
+        yield session
