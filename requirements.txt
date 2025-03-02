@@ -35,7 +35,7 @@ python-dotenv==1.0.1
 python-jose==3.4.0
 python-multipart==0.0.20
 PyVimeo==1.1.2
-requests==2.32.3
+#requests==2.32.3
 rsa==4.9
 simplejson==3.20.1
 six==1.17.0
