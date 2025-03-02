@@ -1,6 +1,9 @@
-from database import engine, Base
+import asyncio
+from sqlalchemy.ext.asyncio import AsyncEngine
+from database import engine, Base  # Ensure you import the correct engine and Base
 
-# Create tables based on models
-Base.metadata.create_all(bind=engine)
+async def create_tables():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
-print("Database tables created successfully!")
+asyncio.run(create_tables())
