@@ -12,7 +12,7 @@ import models
 from models import User
 from sqlalchemy.future import select
 
-SECRET_KEY = "your-secret-key-here"
+SECRET_KEY = "f0c54bbfa2487ce8f70c9c40b1594f9643cd61751f6801f4c856b01483c57511"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
