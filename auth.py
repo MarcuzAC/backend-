@@ -95,3 +95,8 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
         data={"sub": user.username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+# Add the /register endpoint
+@router.post("/register", response_model=UserResponse)
+async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
+    return await register(user, db)
