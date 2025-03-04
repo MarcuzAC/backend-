@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
@@ -12,28 +12,29 @@ import models
 from models import User
 from sqlalchemy.future import select
 
-SECRET_KEY = "f0c54bbfa2487ce8f70c9c40b1594f9643cd61751f6801f4c856b01483c57511"
+SECRET_KEY = "your-secret-key-here"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 router = APIRouter(tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
+
+# Authenticate user (for login)
 async def authenticate_user(db: AsyncSession, username: str, password: str):
     user = await get_user_by_username(db, username)
     if not user or not verify_password(password, user.hashed_password):
         return False
     return user
 
+# Create JWT access token
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+    expire = datetime.utcnow() + (expires_delta if expires_delta else timedelta(minutes=15))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+# Get the current logged-in user
 async def get_current_user(db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -53,15 +54,21 @@ async def get_current_user(db: AsyncSession = Depends(get_db), token: str = Depe
         raise credentials_exception
     return user
 
+# 🔥 NEW: Register a new user
+@router.post("/register", response_model=UserResponse)
 async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
-    # Check if user already exists
+    # Check if username or email is already registered
     existing_user = await db.execute(select(User).filter(User.username == user.username))
     if existing_user.scalars().first():
         raise HTTPException(status_code=400, detail="Username already registered")
-    
+
+    existing_email = await db.execute(select(User).filter(User.email == user.email))
+    if existing_email.scalars().first():
+        raise HTTPException(status_code=400, detail="Email already registered")
+
     # Hash password
     hashed_password = get_password_hash(user.password)
-    
+
     # Create new user
     new_user = User(
         username=user.username,
@@ -72,20 +79,17 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
         phone_number=user.phone_number,
         is_admin=False  # Default to non-admin
     )
-    
+
     # Add and commit to database
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
-    
+
     return new_user
 
+# User Login
 @router.post("/login", response_model=Token)
-async def login(
-    response: Response,  # Add the Response object
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: AsyncSession = Depends(get_db),
-):
+async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
     user = await authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
@@ -97,24 +101,8 @@ async def login(
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-
-    # Set the access token in a cookie
-    response.set_cookie(
-        key="accessToken", 
-        value=f"Bearer {access_token}",  
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,  
-        httponly=True,  
-        secure=True,  
-        samesite="lax",  
-    )
-
     return {"access_token": access_token, "token_type": "bearer"}
-
-# Add the /register endpoint
-@router.post("/register", response_model=UserResponse)
-async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
-    return await register(user, db)
-
+from database import db
 # Add the /user-details endpoint
 @router.get("/user-details", response_model=UserResponse)
 async def get_user_details(current_user: User = Depends(get_current_user)):
