@@ -100,3 +100,8 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
 @router.post("/register", response_model=UserResponse)
 async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
     return await register(user, db)
+
+# Add the /user-details endpoint
+@router.get("/user-details", response_model=UserResponse)
+async def get_user_details(current_user: User = Depends(get_current_user)):
+    return current_user
