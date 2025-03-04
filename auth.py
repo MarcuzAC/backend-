@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
@@ -18,7 +18,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 router = APIRouter(tags=["auth"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
-
 
 async def authenticate_user(db: AsyncSession, username: str, password: str):
     user = await get_user_by_username(db, username)
@@ -82,7 +81,11 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     return new_user
 
 @router.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)):
+async def login(
+    response: Response,  # Add the Response object
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_db),
+):
     user = await authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
@@ -94,6 +97,17 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
+
+    # Set the access token in a cookie
+    response.set_cookie(
+        key="accessToken",  # Cookie name
+        value=f"Bearer {access_token}",  # Cookie value (prefixed with "Bearer")
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # Cookie expiration time in seconds
+        httponly=True,  # Prevent client-side JavaScript from accessing the cookie
+        secure=True,  # Ensure the cookie is only sent over HTTPS
+        samesite="lax",  # Prevent CSRF attacks
+    )
+
     return {"access_token": access_token, "token_type": "bearer"}
 
 # Add the /register endpoint
