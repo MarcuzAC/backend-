@@ -100,12 +100,12 @@ async def login(
 
     # Set the access token in a cookie
     response.set_cookie(
-        key="accessToken",  # Cookie name
-        value=f"Bearer {access_token}",  # Cookie value (prefixed with "Bearer")
-        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,  # Cookie expiration time in seconds
-        httponly=True,  # Prevent client-side JavaScript from accessing the cookie
-        secure=True,  # Ensure the cookie is only sent over HTTPS
-        samesite="lax",  # Prevent CSRF attacks
+        key="accessToken", 
+        value=f"Bearer {access_token}",  
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,  
+        httponly=True,  
+        secure=True,  
+        samesite="lax",  
     )
 
     return {"access_token": access_token, "token_type": "bearer"}
