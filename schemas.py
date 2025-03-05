@@ -26,7 +26,7 @@ class UserResponse(UserBase):
     is_admin: bool
 
     class Config:
-        from_attribute = True
+        orm_mode = True
 
 class VideoBase(BaseModel):
     title: str
@@ -35,14 +35,20 @@ class VideoBase(BaseModel):
 class VideoCreate(VideoBase):
     pass
 
-class VideoResponse(VideoBase):
+class VideoUpdate(BaseModel):
+    title: Optional[str] = None
+    category_id: Optional[uuid.UUID] = None
+    
+class VideoResponse(BaseModel):
     id: uuid.UUID
+    title: str
     created_date: datetime
-    vimeo_url: str
-    vimeo_id: str
+    vimeo_url: Optional[str] = None
+    vimeo_id: Optional[str] = None
+    category: Optional[str] = None 
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class CategoryBase(BaseModel):
     name: str
