@@ -179,7 +179,7 @@ async def get_recent_videos(db: AsyncSession):
         {
             "id": video.id,
             "title": video.title,
-            "category": video.category.name if video.category else "Unknown",  # Get category name
+            "category": video.category.name if video.category else "Unknown",
             "created_date": video.created_date,
             "vimeo_url": video.vimeo_url,
             "vimeo_id": video.vimeo_id,
