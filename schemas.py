@@ -45,7 +45,8 @@ class VideoResponse(BaseModel):
     created_date: datetime
     vimeo_url: Optional[str] = None
     vimeo_id: Optional[str] = None
-    category: Optional[str] = None 
+    category: Optional[str] = None
+    thumbnail_url: Optional[str] = None 
 
     class Config:
         from_attributes = True

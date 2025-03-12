@@ -32,7 +32,7 @@ async def get_all_videos(db: AsyncSession, skip: int = 0, limit: int = 100):
     """Fetch all videos with category names included"""
     result = await db.execute(
         select(models.Video.id, models.Video.title, models.Video.created_date, 
-               models.Video.vimeo_url, models.Video.vimeo_id, models.Category.name.label("category"))  # Extract category.name
+               models.Video.vimeo_url, models.Video.vimeo_id, models.Video.thumbnail_url, models.Category.name.label("category"))  # Extract category.name
         .join(models.Category, models.Video.category_id == models.Category.id)
         .offset(skip)
         .limit(limit)
@@ -48,6 +48,7 @@ async def get_all_videos(db: AsyncSession, skip: int = 0, limit: int = 100):
             "created_date": v.created_date,
             "vimeo_url": v.vimeo_url,
             "vimeo_id": v.vimeo_id,
+            "thumbnail_url": v.thumbnail_url,  # Include thumbnail URL
             "category": v.category,  # Now it's a string
             "like_count": await get_like_count(db, v.id),  # Add like count
             "comment_count": await get_comment_count(db, v.id),  # Add comment count
@@ -76,11 +77,12 @@ async def delete_user(db: AsyncSession, user):
     await db.commit()
 
 # Create a new video entry
-async def create_video(db: AsyncSession, video: schemas.VideoCreate, vimeo_url: str, vimeo_id: str):
+async def create_video(db: AsyncSession, video: schemas.VideoCreate, vimeo_url: str, vimeo_id: str, thumbnail_url: Optional[str] = None):
     db_video = models.Video(
         **video.dict(),
         vimeo_url=vimeo_url,
-        vimeo_id=vimeo_id
+        vimeo_id=vimeo_id,
+        thumbnail_url=thumbnail_url  # Add thumbnail URL
     )
     db.add(db_video)
     await db.commit()
@@ -104,7 +106,7 @@ async def update_video(db: AsyncSession, db_video: models.Video, video_update: s
     update_data = video_update.model_dump(exclude_unset=True)  # Exclude fields that are not provided
 
     # Only update title and category_id
-    allowed_fields = {"title", "category_id"}
+    allowed_fields = {"title", "category_id", "thumbnail_url"}  # Add thumbnail_url
     update_data = {key: value for key, value in update_data.items() if key in allowed_fields}
 
     if not update_data:  # Prevent empty updates
@@ -184,6 +186,7 @@ async def get_recent_videos(db: AsyncSession):
             "created_date": video.created_date,
             "vimeo_url": video.vimeo_url,
             "vimeo_id": video.vimeo_id,
+            "thumbnail_url": video.thumbnail_url,  # Include thumbnail URL
             "like_count": await get_like_count(db, video.id),  # Add like count
             "comment_count": await get_comment_count(db, video.id),  # Add comment count
         }

@@ -34,6 +34,7 @@ class Video(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(String(100), nullable=False)
+    thumbnail_url = Column(String)
     created_date = Column(DateTime, default=datetime.datetime.utcnow)
     category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"))
     vimeo_url = Column(String)
