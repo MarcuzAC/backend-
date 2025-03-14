@@ -9,6 +9,12 @@ class UserBase(BaseModel):
     first_name: str
     last_name: str
     phone_number: str
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
 
 class UserCreate(UserBase):
     password: str

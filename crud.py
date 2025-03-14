@@ -254,3 +254,6 @@ async def get_comment_count(db: AsyncSession, video_id: uuid.UUID):
         select(func.count(models.Comment.id)).filter(models.Comment.video_id == video_id)
     )
     return result or 0
+async def get_user_by_email(db: AsyncSession, email: str):
+    result = await db.execute(select(models.User).filter(models.User.email == email))
+    return result.scalars().first()

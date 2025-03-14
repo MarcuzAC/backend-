@@ -16,6 +16,7 @@ class User(Base):
     email = Column(String(100), unique=True, index=True)
     is_admin = Column(Boolean, default=False)
     hashed_password = Column(String)
+    reset_token = Column(String, nullable=True)
 
     # Relationships
     likes = relationship("Like", back_populates="user")
