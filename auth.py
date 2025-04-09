@@ -107,3 +107,17 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
 @router.get("/user-details", response_model=UserResponse)
 async def get_user_details(current_user: User = Depends(get_current_user)):
     return current_user
+
+# Add this endpoint to verify access tokens
+@router.get("/verify-token")
+async def verify_token(current_user: User = Depends(get_current_user)):
+    """
+    Verify the access token and return basic user information.
+    This endpoint is protected and requires a valid JWT token.
+    """
+    return {
+        "message": "Token is valid",
+        "username": current_user.username,
+        "user_id": current_user.id,
+        "is_admin": current_user.is_admin
+    }
