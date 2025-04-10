@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.params import Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
@@ -98,6 +99,14 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
 #@router.get("/me", response_model=UserResponse)
 #async def read_users_me(current_user: User = Depends(get_current_user)):
     #return current_user
+@router.post("/refresh")
+async def refresh_token(refresh_token: str = Body(...)):
+    try:
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        new_token = create_access_token(data={"sub": payload["sub"]})
+        return {"access_token": new_token}
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
 
 
 # User Login
