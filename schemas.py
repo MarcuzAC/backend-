@@ -72,6 +72,7 @@ class CategoryResponse(CategoryBase):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    user_id: uuid.UUID
 
     # Like Schemas
 class LikeBase(BaseModel):
@@ -103,4 +104,4 @@ class CommentResponse(CommentBase):
     user: UserResponse  # Include user details in the response
 
     class Config:
-        from_attributes = True
+        orm_mode = True

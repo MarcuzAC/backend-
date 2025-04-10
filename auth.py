@@ -12,7 +12,7 @@ import models
 from models import User
 from sqlalchemy.future import select
 
-SECRET_KEY = "your-secret-key-here"
+SECRET_KEY = "ivneWx0gdaNz9IEjeIAnhrUwFYLVYDHKQlrOoUYpi4GLxT_5YzF_KJ9d6s6XagXoMzxvMgJOZr765zoSPtglZw"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -55,7 +55,7 @@ async def get_current_user(db: AsyncSession = Depends(get_db), token: str = Depe
     return user
 
 # 🔥 NEW: Register a new user
-@router.post("/register", response_model=UserResponse)
+@router.post("/register", response_model=Token)
 async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     # Check if username or email is already registered
     existing_user = await db.execute(select(User).filter(User.username == user.username))
@@ -77,15 +77,28 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
         first_name=user.first_name,
         last_name=user.last_name,
         phone_number=user.phone_number,
-        is_admin=False  # Default to non-admin
+        is_admin=False
     )
 
-    # Add and commit to database
+    # Add and commit to DB
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
 
-    return new_user
+    # Create token for new user
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(data={"sub": new_user.username}, expires_delta=access_token_expires)
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user_id": new_user.id
+    }
+# 🔥 NEW: Get current user details
+#@router.get("/me", response_model=UserResponse)
+#async def read_users_me(current_user: User = Depends(get_current_user)):
+    #return current_user
+
 
 # User Login
 @router.post("/login", response_model=Token)
