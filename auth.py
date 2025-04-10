@@ -92,7 +92,7 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "user_id": new_user.id
+        #"user_id": new_user.id
     }
 # 🔥 NEW: Get current user details
 #@router.get("/me", response_model=UserResponse)
