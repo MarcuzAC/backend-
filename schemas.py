@@ -72,7 +72,7 @@ class CategoryResponse(CategoryBase):
 class Token(BaseModel):
     access_token: str
     token_type: str
-    user_id: uuid.UUID
+    #user_id: uuid.UUID
 
     # Like Schemas
 class LikeBase(BaseModel):
