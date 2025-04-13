@@ -121,7 +121,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.username, "email":user.email, "phone":user.phone_number, "user_id":str(user.id)}, expires_delta=access_token_expires
+        data={"sub": user.username, "email":user.email, "phone":user.phone_number}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
 # Add the /user-details endpoint
