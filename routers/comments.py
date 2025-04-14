@@ -1,40 +1,43 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from typing import List
 import uuid
 from database import get_db
 from auth import get_current_user
+import models
 import schemas
 import crud
-from models import User, Video, Comment
+from models import User, Video
 
 router = APIRouter(prefix="/comments", tags=["comments"])
 
 @router.post("/", response_model=schemas.CommentResponse)
-async def add_comment(
-    comment: schemas.CommentCreate, 
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Add a new comment to a video"""
-    # Verify video exists
-    video = await db.get(Video, comment.video_id)
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
-    
-    return await crud.add_comment(db=db, comment=comment, user_id=current_user.id)
-
-@router.get("/{video_id}", response_model=List[schemas.CommentResponse])
-async def get_comments(
-    video_id: uuid.UUID, 
+async def create_comment(
+    comment_data: schemas.CommentCreate,
+    current_user: models.User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get all comments for a specific video"""
-    # Verify video exists
-    video_exists = await db.scalar(select(Video.id).filter(Video.id == video_id))
-    if not video_exists:
-        raise HTTPException(status_code=404, detail="Video not found")
-    
-    return await crud.get_comments(db=db, video_id=video_id)
+    try:
+        return await crud.add_comment(
+            db=db,
+            video_id=comment_data.video_id,
+            user_id=current_user.id,
+            text=comment_data.text
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to create comment")
+
+@router.get("/{video_id}", response_model=list[schemas.CommentResponse])
+async def read_comments(
+    video_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        return await crud.get_comments(db, video_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to fetch comments")
