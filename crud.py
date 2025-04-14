@@ -232,24 +232,65 @@ async def get_like_count(db: AsyncSession, video_id: uuid.UUID):
 
 
 # 📌 Updated Function: Add a Comment with user_id from access_token
-async def add_comment(db: AsyncSession, comment: schemas.CommentCreate, access_token: str):
-    # Extract user_id from the access token
-    from security import get_current_user  # Import the function from the security module
-    user = await get_current_user(db, access_token)  # Decode the token and get the user
-
+async def add_comment(
+    db: AsyncSession, 
+    video_id: uuid.UUID, 
+    text: str, 
+    access_token: str
+):
+    """
+    Add a comment to a video using the authenticated user's ID from the access token.
+    
+    Args:
+        db: Async database session
+        video_id: UUID of the video being commented on
+        text: The comment text content
+        access_token: JWT access token to authenticate the user
+        
+    Returns:
+        The created comment record
+        
+    Raises:
+        ValueError: If user not found, video not found, or token is invalid
+    """
+    # 1. Verify and decode the access token to get user_id
+    from security import decode_access_token  # Import your token decoding function
+    token_data = decode_access_token(access_token)
+    if not token_data:
+        raise ValueError("Invalid access token")
+    
+    user_id = uuid.UUID(token_data.get("user_id")) 
+    
+    # 2. Verify the user exists
+    user = await get_user(db, user_id)
     if not user:
-        raise ValueError("User not found or invalid token")
-
-    # Create the comment and associate the user_id from the access token
+        raise ValueError("User not found")
+    
+    # 3. Verify the video exists
+    video = await get_video(db, video_id)
+    if not video:
+        raise ValueError("Video not found")
+    
+    # 4. Create and save the comment
     db_comment = models.Comment(
-        user_id=user.id,
-        video_id=comment.video_id,
-        text=comment.text
+        user_id=user_id,
+        video_id=video_id,
+        text=text,
+        created_at=func.now()  # Set server-side timestamp
     )
+    
     db.add(db_comment)
     await db.commit()
     await db.refresh(db_comment)
-    return db_comment
+    
+    # 5. Return the comment with user details
+    result = await db.execute(
+        select(models.Comment)
+        .options(joinedload(models.Comment.user))
+        .filter(models.Comment.id == db_comment.id)
+    )
+    
+    return result.scalars().first()
 
 
 

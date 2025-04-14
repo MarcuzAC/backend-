@@ -91,7 +91,6 @@ class LikeResponse(LikeBase):
 
 # Comment Schemas
 class CommentBase(BaseModel):
-    video_id: uuid.UUID
     text: str
 
 class CommentCreate(CommentBase):
