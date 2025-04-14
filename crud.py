@@ -2,7 +2,6 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
-from auth import get_current_user
 import models
 import schemas
 import uuid
