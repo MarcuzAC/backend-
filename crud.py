@@ -230,85 +230,24 @@ async def get_like_count(db: AsyncSession, video_id: uuid.UUID):
     )
     return result or 0
 
-# ... [keep all existing functions above unchanged] ...
+# 📌 New Function: Add a Comment
+async def add_comment(db: AsyncSession, comment: schemas.CommentCreate):
+    db_comment = models.Comment(**comment.dict())
+    db.add(db_comment)
+    await db.commit()
+    await db.refresh(db_comment)
+    return db_comment
 
-# 📌 Updated Function: Add a Comment
-async def add_comment(
-    db: AsyncSession, 
-    video_id: uuid.UUID,
-    user_id: uuid.UUID,
-    text: str
-):
-    """Add a new comment with validation and proper error handling"""
-    try:
-        # Validate text exists and is not empty
-        if not text or not text.strip():
-            raise ValueError("Comment text cannot be empty")
-        
-        # Verify video exists
-        video = await db.get(models.Video, video_id)
-        if not video:
-            raise ValueError("Video not found")
-        
-        # Verify user exists
-        user = await db.get(models.User, user_id)
-        if not user:
-            raise ValueError("User not found")
-
-        # Create and save comment
-        db_comment = models.Comment(
-            video_id=video_id,
-            user_id=user_id,
-            text=text.strip()
-        )
-        
-        db.add(db_comment)
-        await db.commit()
-        await db.refresh(db_comment)
-        
-        # Eager load user data for response
-        result = await db.execute(
-            select(models.Comment)
-            .options(joinedload(models.Comment.user))
-            .filter(models.Comment.id == db_comment.id)
-        )
-        
-        return result.scalars().first()
-        
-    except Exception as e:
-        await db.rollback()
-        print(f"Error adding comment: {str(e)}")
-        raise ValueError(f"Failed to add comment: {str(e)}")
-
-# 📌 Updated Function: Get Comments for a Video
+# 📌 New Function: Get Comments for a Video
 async def get_comments(db: AsyncSession, video_id: uuid.UUID):
-    """Get all comments for a video with user details"""
-    try:
-        # Verify video exists first
-        video_exists = await db.scalar(
-            select(models.Video.id).filter(models.Video.id == video_id)
-        )
-        if not video_exists:
-            raise ValueError("Video not found")
+    result = await db.execute(
+        select(models.Comment)
+        .options(joinedload(models.Comment.user))  # Load user relationship
+        .filter(models.Comment.video_id == video_id)
+        .order_by(models.Comment.created_at.desc())
+    )
+    return result.scalars().all()
 
-        # Get comments with user relationship loaded
-        result = await db.execute(
-            select(models.Comment)
-            .options(
-                joinedload(models.Comment.user).load_only(
-                    models.User.id,
-                    models.User.username,
-                    models.User.first_name,
-                    models.User.last_name
-                )
-            )
-            .filter(models.Comment.video_id == video_id)
-            .order_by(models.Comment.created_at.desc())
-        )
-        return result.scalars().unique().all()
-    except Exception as e:
-        print(f"Error fetching comments: {str(e)}")
-        raise ValueError(f"Failed to fetch comments: {str(e)}")
 # 📌 New Function: Get Comment Count for a Video
 async def get_comment_count(db: AsyncSession, video_id: uuid.UUID):
     result = await db.scalar(
