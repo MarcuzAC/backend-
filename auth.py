@@ -35,7 +35,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-# Get the current logged-in user
 async def get_current_user(db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -44,16 +43,25 @@ async def get_current_user(db: AsyncSession = Depends(get_db), token: str = Depe
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("user_id")
         username: str = payload.get("sub")
-        if username is None:
+        email: str = payload.get("email")
+        phone: str = payload.get("phone")
+
+        if not all([user_id, username, email, phone]):
             raise credentials_exception
+
     except JWTError:
         raise credentials_exception
-    
-    user = await get_user_by_username(db, username=username)
+
+    # Optional: Fetch from DB for up-to-date info, or return from token
+    user = await db.get(User, user_id)
     if user is None:
         raise credentials_exception
+
+    # You could also attach extra info if needed
     return user
+
 
 # 🔥 NEW: Register a new user
 @router.post("/register", response_model=Token)
