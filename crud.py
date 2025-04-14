@@ -259,7 +259,7 @@ async def add_comment(
     if not token_data:
         raise ValueError("Invalid access token")
     
-    user_id = uuid.UUID(token_data.get("user_id")) 
+    user_id = uuid.UUID(token_data.get("user_id"))  # Assuming 'sub' contains user_id
     
     # 2. Verify the user exists
     user = await get_user(db, user_id)
