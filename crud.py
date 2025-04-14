@@ -234,7 +234,8 @@ async def get_like_count(db: AsyncSession, video_id: uuid.UUID):
 # 📌 Updated Function: Add a Comment with user_id from access_token
 async def add_comment(db: AsyncSession, comment: schemas.CommentCreate, access_token: str):
     # Extract user_id from the access token
-    user = await get_current_user(db, access_token)  # Assuming `get_current_user` is your function to decode the token and get the user
+    from security import get_current_user  # Import the function from the security module
+    user = await get_current_user(db, access_token)  # Decode the token and get the user
 
     if not user:
         raise ValueError("User not found or invalid token")
