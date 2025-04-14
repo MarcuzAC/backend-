@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -15,9 +14,9 @@ router = APIRouter(prefix="/comments", tags=["comments"])
 
 @router.post("/", response_model=schemas.CommentResponse)
 async def add_comment(
-    comment: schemas.CommentCreate, 
+    comment: schemas.CommentCreate,  # No user_id in request body anymore
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)  # Get current user from token
 ):
     """Add a new comment to a video"""
     # Verify video exists
@@ -25,6 +24,7 @@ async def add_comment(
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     
+    # Add comment, using the current user's ID (extracted from token)
     return await crud.add_comment(db=db, comment=comment, user_id=current_user.id)
 
 @router.get("/{video_id}", response_model=List[schemas.CommentResponse])

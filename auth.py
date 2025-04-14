@@ -103,10 +103,7 @@ async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
         "token_type": "bearer",
         #"user_id": new_user.id
     }
-# 🔥 NEW: Get current user details
-#@router.get("/me", response_model=UserResponse)
-#async def read_users_me(current_user: User = Depends(get_current_user)):
-    #return current_user
+# Refresh Token
 @router.post("/refresh")
 async def refresh_token(refresh_token: str = Body(...)):
     try:
