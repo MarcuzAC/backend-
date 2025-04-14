@@ -3,14 +3,12 @@ from typing import Optional
 import uuid
 from datetime import datetime
 
-# User Schemas
 class UserBase(BaseModel):
     email: EmailStr
     username: str
     first_name: str
     last_name: str
     phone_number: str
-
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
@@ -36,7 +34,6 @@ class UserResponse(UserBase):
     class Config:
         orm_mode = True
 
-# Video Schemas
 class VideoBase(BaseModel):
     title: str
     category_id: uuid.UUID
@@ -47,7 +44,7 @@ class VideoCreate(VideoBase):
 class VideoUpdate(BaseModel):
     title: Optional[str] = None
     category_id: Optional[uuid.UUID] = None
-
+    
 class VideoResponse(BaseModel):
     id: uuid.UUID
     title: str
@@ -55,12 +52,11 @@ class VideoResponse(BaseModel):
     vimeo_url: Optional[str] = None
     vimeo_id: Optional[str] = None
     category: Optional[str] = None
-    thumbnail_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None 
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
-# Category Schemas
 class CategoryBase(BaseModel):
     name: str
 
@@ -73,13 +69,14 @@ class CategoryResponse(CategoryBase):
     class Config:
         orm_mode = True
 
-# Token Schema
 class Token(BaseModel):
     access_token: str
     token_type: str
+    #user_id: uuid.UUID
 
-# Like Schemas
+    # Like Schemas
 class LikeBase(BaseModel):
+    user_id: uuid.UUID
     video_id: uuid.UUID
 
 class LikeCreate(LikeBase):
@@ -90,18 +87,20 @@ class LikeResponse(LikeBase):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # Comment Schemas
-class CommentCreate(BaseModel):
+class CommentBase(BaseModel):
     video_id: uuid.UUID
     text: str
 
-class CommentResponse(BaseModel):
+class CommentCreate(CommentBase):
+    pass
+
+class CommentResponse(CommentBase):
     id: uuid.UUID
-    text: str
     created_at: datetime
-    user: UserResponse
+    user: UserResponse  # Include user details in the response
 
     class Config:
         orm_mode = True

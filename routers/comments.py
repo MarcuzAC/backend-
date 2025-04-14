@@ -1,30 +1,30 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from typing import List
 import uuid
+
 from database import get_db
 from auth import get_current_user
 import schemas
 import crud
-from models import User, Video, Comment
+from models import User, Video
 
 router = APIRouter(prefix="/comments", tags=["comments"])
 
 @router.post("/", response_model=schemas.CommentResponse)
 async def add_comment(
-    comment: schemas.CommentCreate,  # No user_id in request body anymore
+    comment: schemas.CommentCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)  # Get current user from token
+    current_user: User = Depends(get_current_user)
 ):
     """Add a new comment to a video"""
-    # Verify video exists
+    # Check if the video exists
     video = await db.get(Video, comment.video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     
-    # Add comment, using the current user's ID (extracted from token)
+    # Create and save the comment using the authenticated user
     return await crud.add_comment(db=db, comment=comment, user_id=current_user.id)
 
 @router.get("/{video_id}", response_model=List[schemas.CommentResponse])
@@ -33,7 +33,7 @@ async def get_comments(
     db: AsyncSession = Depends(get_db)
 ):
     """Get all comments for a specific video"""
-    # Verify video exists
+    # Check if the video exists
     video_exists = await db.scalar(select(Video.id).filter(Video.id == video_id))
     if not video_exists:
         raise HTTPException(status_code=404, detail="Video not found")

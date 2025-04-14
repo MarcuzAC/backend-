@@ -231,12 +231,17 @@ async def get_like_count(db: AsyncSession, video_id: uuid.UUID):
     return result or 0
 
 # 📌 New Function: Add a Comment
-async def add_comment(db: AsyncSession, comment: schemas.CommentCreate):
-    db_comment = models.Comment(**comment.dict())
+async def add_comment(db: AsyncSession, comment: schemas.CommentCreate, user_id: uuid.UUID):
+    db_comment = comment(
+        user_id=user_id,
+        video_id=comment.video_id,
+        text=comment.text
+    )
     db.add(db_comment)
     await db.commit()
     await db.refresh(db_comment)
     return db_comment
+
 
 # 📌 New Function: Get Comments for a Video
 async def get_comments(db: AsyncSession, video_id: uuid.UUID):
