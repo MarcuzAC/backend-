@@ -5,7 +5,7 @@ from fastapi.responses import RedirectResponse
 from database import engine
 import models
 from auth import router as auth_router
-from routers import users, videos, categories, likes, comments, search
+from routers import users, videos, categories, likes, comments
 
 app = FastAPI(
     title="Video API",
@@ -31,7 +31,6 @@ app.include_router(videos.router)
 app.include_router(categories.router)
 app.include_router(likes.router)
 app.include_router(comments.router)
-app.include_router(search.router)
 
 # Redirect from / to /redoc
 @app.get("/")
