@@ -94,7 +94,7 @@ class LikeResponse(LikeBase):
     user: Optional[UserResponse] = None
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 class CommentBase(BaseModel):
     text: str
