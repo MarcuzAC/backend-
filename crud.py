@@ -274,14 +274,14 @@ async def update_comment(
     db: AsyncSession,
     comment_id: uuid.UUID,
     new_text: str,
-    current_user_id: uuid.UUID
+    user_id: uuid.UUID
 ) -> models.Comment:
     """Update a comment's text with ownership verification"""
     comment = await db.get(models.Comment, comment_id)
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
     
-    if comment.user_id != current_user_id:
+    if comment.user_id != user_id:
         raise HTTPException(
             status_code=403,
             detail="You can only edit your own comments"
@@ -297,14 +297,14 @@ async def update_comment(
 async def delete_comment(
     db: AsyncSession,
     comment_id: uuid.UUID,
-    current_user_id: uuid.UUID
+    user_id: uuid.UUID
 ) -> None:
     """Delete a comment with ownership verification"""
     comment = await db.get(models.Comment, comment_id)
     if not comment:
         raise HTTPException(status_code=404, detail="Comment not found")
     
-    if comment.user_id != current_user_id:
+    if comment.user_id != user_id:
         raise HTTPException(
             status_code=403,
             detail="You can only delete your own comments"
