@@ -104,6 +104,7 @@ class CommentCreate(BaseModel):
     text: str
 
 class CommentUpdate(BaseModel):
+    comment_id: uuid.UUID
     text: str
 
 class CommentResponse(BaseModel):
@@ -117,8 +118,3 @@ class CommentResponse(BaseModel):
 
     class Config:
         orm_mode = True
-
-# Update forward references for circular dependencies
-CommentResponse.update_forward_refs()
-UserResponse.update_forward_refs()
-VideoResponse.update_forward_refs()
