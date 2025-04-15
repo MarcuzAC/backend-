@@ -4,6 +4,7 @@ from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Uniq
 from sqlalchemy.dialects.postgresql import UUID
 from database import Base
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 
 class User(Base):
     __tablename__ = "users"
@@ -17,6 +18,7 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     hashed_password = Column(String)
     reset_token = Column(String, nullable=True)
+    avatar_url = Column(String, nullable=True)  # Added avatar URL field
 
     # Relationships
     likes = relationship("Like", back_populates="user")
@@ -71,8 +73,12 @@ class Comment(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id"), nullable=False)
     text = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())  # Added for tracking edits
 
     # Relationships
     user = relationship("User", back_populates="comments")
     video = relationship("Video", back_populates="comments")
+
+    def __repr__(self):
+        return f"<Comment(id={self.id}, user_id={self.user_id}, video_id={self.video_id})>"

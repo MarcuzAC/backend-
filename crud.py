@@ -267,3 +267,32 @@ async def get_comment_count(db: AsyncSession, video_id: uuid.UUID):
 async def get_user_by_email(db: AsyncSession, email: str):
     result = await db.execute(select(models.User).filter(models.User.email == email))
     return result.scalars().first()
+
+# In crud.py
+
+async def update_comment(
+    db: AsyncSession,
+    comment_id: uuid.UUID,
+    text: str
+) -> models.Comment:
+    """Update a comment's text"""
+    comment = await db.get(models.Comment, comment_id)
+    if not comment:
+        raise ValueError("Comment not found")
+    
+    comment.text = text
+    await db.commit()
+    await db.refresh(comment)
+    return comment
+
+async def delete_comment(
+    db: AsyncSession,
+    comment_id: uuid.UUID
+) -> None:
+    """Delete a comment"""
+    comment = await db.get(models.Comment, comment_id)
+    if not comment:
+        raise ValueError("Comment not found")
+    
+    await db.delete(comment)
+    await db.commit()

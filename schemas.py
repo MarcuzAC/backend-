@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 import uuid
 from datetime import datetime
 
@@ -9,6 +9,7 @@ class UserBase(BaseModel):
     first_name: str
     last_name: str
     phone_number: str
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
@@ -30,6 +31,8 @@ class UserUpdate(BaseModel):
 class UserResponse(UserBase):
     id: uuid.UUID
     is_admin: bool
+    avatar_url: Optional[str] = None
+    # comments: Optional[List['CommentResponse']] = []  # Uncomment if needed
 
     class Config:
         orm_mode = True
@@ -52,7 +55,10 @@ class VideoResponse(BaseModel):
     vimeo_url: Optional[str] = None
     vimeo_id: Optional[str] = None
     category: Optional[str] = None
-    thumbnail_url: Optional[str] = None 
+    thumbnail_url: Optional[str] = None
+    like_count: Optional[int] = 0
+    comment_count: Optional[int] = 0
+    # comments: Optional[List['CommentResponse']] = []  # Uncomment if needed
 
     class Config:
         from_attributes = True
@@ -65,6 +71,7 @@ class CategoryCreate(CategoryBase):
 
 class CategoryResponse(CategoryBase):
     id: uuid.UUID
+    video_count: Optional[int] = 0
 
     class Config:
         orm_mode = True
@@ -72,9 +79,8 @@ class CategoryResponse(CategoryBase):
 class Token(BaseModel):
     access_token: str
     token_type: str
-    #user_id: uuid.UUID
+    user_id: uuid.UUID
 
-    # Like Schemas
 class LikeBase(BaseModel):
     user_id: uuid.UUID
     video_id: uuid.UUID
@@ -85,24 +91,34 @@ class LikeCreate(LikeBase):
 class LikeResponse(LikeBase):
     id: uuid.UUID
     created_at: datetime
+    user: Optional[UserResponse] = None
 
     class Config:
         from_attributes = True
 
-# Comment Schemas
 class CommentBase(BaseModel):
-    user_id: uuid.UUID
+    text: str
+
+class CommentCreate(BaseModel):
     video_id: uuid.UUID
     text: str
 
-class CommentCreate(CommentBase):
-    pass
+class CommentUpdate(BaseModel):
+    text: str
 
-class CommentResponse(CommentBase):
+class CommentResponse(BaseModel):
     id: uuid.UUID
+    text: str
+    user_id: uuid.UUID
+    video_id: uuid.UUID
     created_at: datetime
-    user: UserResponse  # Include user details in the response
+    updated_at: Optional[datetime] = None
+    user: UserResponse
 
     class Config:
         orm_mode = True
 
+# Update forward references for circular dependencies
+CommentResponse.update_forward_refs()
+UserResponse.update_forward_refs()
+VideoResponse.update_forward_refs()
