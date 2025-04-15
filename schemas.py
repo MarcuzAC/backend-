@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 import uuid
 from datetime import datetime
@@ -105,3 +105,54 @@ class CommentResponse(CommentBase):
 
     class Config:
         orm_mode = True
+
+class VideoSearchRequest(BaseModel):
+    query: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=100,
+        description="Text to search in video titles"
+    )
+    category_id: Optional[uuid.UUID] = Field(
+        None,
+        description="Filter by category ID"
+    )
+    page: int = Field(
+        1,
+        ge=1,
+        description="Page number for pagination"
+    )
+    limit: int = Field(
+        10,
+        ge=1,
+        le=100,
+        description="Items per page"
+    )
+
+
+class VideoSearchResult(BaseModel):
+    id: uuid.UUID
+    title: str
+    created_date: datetime
+    vimeo_url: str
+    vimeo_id: str
+    thumbnail_url: Optional[str]
+    category: str
+    like_count: int
+    comment_count: int
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+class SearchSuggestion(BaseModel):
+        suggestions: list[str] = Field(
+        ...,
+        description="List of autocomplete suggestions"
+    )
+class PopularSearches(BaseModel):
+    terms: list[str] = Field(
+        ...,
+        description="List of popular search terms"
+    )
