@@ -231,18 +231,10 @@ async def get_like_count(db: AsyncSession, video_id: uuid.UUID):
     return result or 0
 
 
-# 📌 Updated Function: Add a Comment with user_id from access_token
-async def add_comment(db: AsyncSession, comment: schemas.CommentCreate, access_token: str):
-    # Extract user_id from the access token
-    from security import get_current_user  # Import the function from the security module
-    user = await get_current_user(db, access_token)  # Decode the token and get the user
-
-    if not user:
-        raise ValueError("User not found or invalid token")
-
-    # Create the comment and associate the user_id from the access token
+async def add_comment(db: AsyncSession, comment: schemas.CommentCreate, user_id: uuid.UUID):
+    """Add a comment using the already authenticated user_id"""
     db_comment = models.Comment(
-        user_id=user.id,
+        user_id=user_id,
         video_id=comment.video_id,
         text=comment.text
     )
@@ -250,7 +242,6 @@ async def add_comment(db: AsyncSession, comment: schemas.CommentCreate, access_t
     await db.commit()
     await db.refresh(db_comment)
     return db_comment
-
 
 
 # 📌 New Function: Get Comments for a Video

@@ -19,12 +19,10 @@ async def add_comment(
     current_user: User = Depends(get_current_user)
 ):
     """Add a new comment to a video"""
-    # Check if the video exists
     video = await db.get(Video, comment.video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     
-    # Create and save the comment using the authenticated user
     return await crud.add_comment(db=db, comment=comment, user_id=current_user.id)
 
 @router.get("/{video_id}", response_model=List[schemas.CommentResponse])
