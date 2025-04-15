@@ -16,13 +16,15 @@ router = APIRouter(prefix="/comments", tags=["comments"])
 async def add_comment(
     comment: schemas.CommentCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)  # This already validates the user
 ):
     """Add a new comment to a video"""
+    # Check if the video exists
     video = await db.get(Video, comment.video_id)
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     
+    # Create and save the comment using the authenticated user's ID
     return await crud.add_comment(db=db, comment=comment, user_id=current_user.id)
 
 @router.get("/{video_id}", response_model=List[schemas.CommentResponse])

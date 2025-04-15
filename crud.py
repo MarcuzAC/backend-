@@ -231,7 +231,11 @@ async def get_like_count(db: AsyncSession, video_id: uuid.UUID):
     return result or 0
 
 
-async def add_comment(db: AsyncSession, comment: schemas.CommentCreate, user_id: uuid.UUID):
+async def add_comment(
+    db: AsyncSession, 
+    comment: schemas.CommentCreate, 
+    user_id: uuid.UUID  # Expect user_id directly instead of token
+):
     """Add a comment using the already authenticated user_id"""
     db_comment = models.Comment(
         user_id=user_id,
