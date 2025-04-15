@@ -52,7 +52,7 @@ async def update_comment(
         db=db,
         comment_id=comment_id,
         new_text=comment_update.text,
-        current_user_id=current_user.id
+        user_id=current_user.id
     )
 
 @router.delete("/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -65,6 +65,6 @@ async def delete_comment(
     await crud.delete_comment(
         db=db,
         comment_id=comment_id,
-        current_user_id=current_user.id
+        user_id=current_user.id
     )
     return Response(status_code=204)
