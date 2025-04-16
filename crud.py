@@ -309,6 +309,6 @@ async def delete_comment(
             status_code=403,
             detail="You can only delete your own comments"
         )
-    
+
     await db.delete(comment)
     await db.commit()
