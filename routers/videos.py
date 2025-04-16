@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Form, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
 from typing import List, Optional
@@ -282,3 +283,58 @@ async def read_video(
         likes=video.likes,  # Include likes
         comments=video.comments  # Include comments
     )
+@router.get("/share/{video_id}", response_class=HTMLResponse)
+async def share_video(
+    video_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """Android-only sharing endpoint with direct MediaFire APK download"""
+    # Verify video exists
+    video = await crud.get_video(db, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    user_agent = request.headers.get("user-agent", "").lower()
+    
+    # Android detection
+    is_android = "android" in user_agent
+    
+    # MediaFire APK download link
+    apk_download_url = "https://www.mediafire.com/file/3k2oxcer1g4mqzw/mlctv.apk/file"
+    
+    # HTML response that tries to open app first, then redirects to MediaFire
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta property="og:title" content="{video.title}">
+        <meta property="og:description" content="Watch this video in MCL TV app.">
+        <meta property="og:image" content="{request.base_url}{video.thumbnail_url.lstrip('/')}">
+        <meta property="og:url" content="{request.url}">
+        <script>
+            function redirectToApp() {{
+                // Try to open the Android app
+                window.location.href = 'mlctv://video/{video_id}';
+                
+                // If app not installed, redirect to MediaFire after timeout
+                setTimeout(function() {{
+                    window.location.href = '{apk_download_url}';
+                }}, 500);
+            }}
+            
+            // Only attempt redirect if on Android
+            {"window.onload = redirectToApp;" if is_android else ""}
+        </script>
+    </head>
+    <body>
+        <div style="text-align: center; padding: 50px;">
+            <h1>{video.title}</h1>
+            {"<p>For the best experience, please install our Android app.</p>" if is_android else "<p>This content is available on Android devices only.</p>"}
+            {"<a href='{apk_download_url}'><button style='padding: 10px 20px; background-color: #4285F4; color: white; border: none; border-radius: 5px; font-size: 16px;'>Download Android App</button></a>" if is_android else ""}
+        </div>
+    </body>
+    </html>
+    """
+    
+    return HTMLResponse(content=html_content)

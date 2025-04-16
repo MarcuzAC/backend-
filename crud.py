@@ -1,5 +1,4 @@
 from typing import Optional
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
@@ -269,46 +268,3 @@ async def get_user_by_email(db: AsyncSession, email: str):
     result = await db.execute(select(models.User).filter(models.User.email == email))
     return result.scalars().first()
 
-
-async def update_comment(
-    db: AsyncSession,
-    comment_id: uuid.UUID,
-    new_text: str,
-    user_id: uuid.UUID
-) -> models.Comment:
-    """Update a comment's text with ownership verification"""
-    comment = await db.get(models.Comment, comment_id)
-    if not comment:
-        raise HTTPException(status_code=404, detail="Comment not found")
-    
-    if comment.user_id != user_id:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only edit your own comments"
-        )
-    
-    comment.text = new_text
-    comment.updated_at = func.now()  # Update the timestamp
-    
-    await db.commit()
-    await db.refresh(comment)
-    return comment
-
-async def delete_comment(
-    db: AsyncSession,
-    comment_id: uuid.UUID,
-    user_id: uuid.UUID
-) -> None:
-    """Delete a comment with ownership verification"""
-    comment = await db.get(models.Comment, comment_id)
-    if not comment:
-        raise HTTPException(status_code=404, detail="Comment not found")
-    
-    if comment.user_id != user_id:
-        raise HTTPException(
-            status_code=403,
-            detail="You can only delete your own comments"
-        )
-
-    await db.delete(comment)
-    await db.commit()

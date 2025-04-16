@@ -65,6 +65,6 @@ async def delete_comment(
     await crud.delete_comment(
         db=db,
         comment_id=comment_id,
-        user_id=current_user.id
+        current_user_id=current_user.id
     )
     return Response(status_code=204)
