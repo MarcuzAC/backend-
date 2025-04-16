@@ -245,14 +245,19 @@ async def delete_video(
     return {"message": "Video deleted successfully"}
 
 
-# Get all videos
 @router.get("/", response_model=List[schemas.VideoResponse])
 async def read_videos(
     skip: int = 0,
     limit: int = 100,
+    category_id: Optional[uuid.UUID] = None,
     db: AsyncSession = Depends(get_db)
 ):
-    videos = await crud.get_all_videos(db, skip=skip, limit=limit)
+    query = select(Video).offset(skip).limit(limit)
+    
+    if category_id:
+        query = query.where(Video.category_id == category_id)
+        
+    videos = await crud.get_all_videos(db, skip=skip, limit=limit, category_id=category_id)
     return videos
 
 
