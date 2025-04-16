@@ -244,7 +244,29 @@ async def delete_video(
     await crud.delete_video(db, video)
     return {"message": "Video deleted successfully"}
 
-
+@router.get("/search", response_model=List[schemas.VideoResponse])
+async def search_videos(
+    query: Optional[str] = None,
+    category_id: Optional[uuid.UUID] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db)
+):
+    # Start with base query
+    stmt = select(Video).offset(skip).limit(limit)
+    
+    # Apply search filters
+    if query:
+        stmt = stmt.where(Video.title.ilike(f"%{query}%"))
+    
+    if category_id:
+        stmt = stmt.where(Video.category_id == category_id)
+    
+    # Execute query
+    result = await db.execute(stmt)
+    videos = result.scalars().all()
+    
+    return videos
 @router.get("/", response_model=List[schemas.VideoResponse])
 async def read_videos(
     skip: int = 0,
