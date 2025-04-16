@@ -328,7 +328,7 @@ async def share_video(
     is_android = "android" in user_agent
     
     # MediaFire APK download link
-    apk_download_url = "https://www.mediafire.com/file/3k2oxcer1g4mqzw/mlctv.apk/file"
+    apk_download_url = "https://www.mediafire.com/file/0ge9h6epghfnu4e/mcltv.apk/file"
     
     # HTML response that tries to open app first, then redirects to MediaFire
     html_content = f"""
