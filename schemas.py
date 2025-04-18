@@ -104,7 +104,6 @@ class CommentCreate(BaseModel):
     text: str
 
 class CommentUpdate(BaseModel):
-    comment_id: uuid.UUID
     text: str
 
 class CommentResponse(BaseModel):

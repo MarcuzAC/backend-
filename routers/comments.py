@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from requests import Session
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import UUID, select
 from typing import List
 import uuid
 
@@ -40,31 +41,39 @@ async def get_comments(
         raise HTTPException(status_code=404, detail="Video not found")
     
     return await crud.get_comments(db=db, video_id=video_id)
-@router.put("/{comment_id}", response_model=schemas.CommentResponse)
-async def update_comment(
-    comment_id: uuid.UUID,
-    comment_update: schemas.CommentUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    """Endpoint to update a comment"""
-    return await crud.update_comment(
-        db=db,
-        comment_id=comment_id,
-        new_text=comment_update.text,
-        user_id=current_user.id
-    )
 
-@router.delete("/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_comment(
-    comment_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
+
+@router.put("/comments/{comment_id}", response_model=schemas.Comment)
+async def update_comment(
+    comment_id: UUID,
+    updated_data: schemas.CommentUpdate,  # assuming it has a 'text' field
+    db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    """Endpoint to delete a comment"""
-    await crud.delete_comment(
-        db=db,
-        comment_id=comment_id,
-        current_user_id=current_user.id
-    )
-    return Response(status_code=204)
+    comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    if comment.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    comment.text = updated_data.text
+    db.commit()
+    db.refresh(comment)
+    return comment
+
+
+@router.delete("/comments/{comment_id}", status_code=200)
+async def delete_comment(
+    comment_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    comment = db.query(models.Comment).filter(models.Comment.id == comment_id).first()
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    if comment.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    db.delete(comment)
+    db.commit()
+    return {"detail": "Comment deleted successfully"}
