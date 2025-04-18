@@ -268,3 +268,46 @@ async def get_user_by_email(db: AsyncSession, email: str):
     result = await db.execute(select(models.User).filter(models.User.email == email))
     return result.scalars().first()
 
+# Update Comment
+async def update_comment(
+    db: AsyncSession, 
+    comment_id: uuid.UUID, 
+    new_text: str, 
+    user_id: uuid.UUID
+):
+    # Fetch the comment
+    comment = await db.execute(select(models.Comment).filter(models.Comment.id == comment_id))
+    comment = comment.scalars().first()
+
+    if not comment:
+        raise ValueError("Comment not found")
+
+    if comment.user_id != user_id:
+        raise ValueError("You are not authorized to edit this comment")
+
+    # Update the comment text
+    comment.text = new_text
+    db.add(comment)
+    await db.commit()
+    await db.refresh(comment)
+    return comment
+# Delete Comment
+async def delete_comment(
+    db: AsyncSession, 
+    comment_id: uuid.UUID, 
+    current_user_id: uuid.UUID
+):
+    # Fetch the comment
+    comment = await db.execute(select(models.Comment).filter(models.Comment.id == comment_id))
+    comment = comment.scalars().first()
+
+    if not comment:
+        raise ValueError("Comment not found")
+
+    if comment.user_id != current_user_id:
+        raise ValueError("You are not authorized to delete this comment")
+
+    # Delete the comment
+    await db.delete(comment)
+    await db.commit()
+    return comment
