@@ -223,26 +223,78 @@ async def update_video(
     )
 
 
-# Delete a video
 @router.delete("/{video_id}")
 async def delete_video(
-    video_id: uuid.UUID, 
-    db: AsyncSession = Depends(get_db)
+    video_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: schemas.User = Depends(get_current_user)
 ):
-    video = await crud.get_video(db, video_id)
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
-    
-    # Delete from Vimeo
+    """
+    Delete a video and all its associated data (comments, likes) in a transaction.
+    Also removes from Vimeo.
+    """
     try:
-        response = client.delete(f"/videos/{video.vimeo_id}")
-        if response.status_code != 204:
-            raise HTTPException(status_code=500, detail=f"Vimeo deletion failed: {response.text}")
+        # Start a transaction
+        async with db.begin():
+            # 1. Get the video with all relationships
+            result = await db.execute(
+                select(Video)
+                .options(
+                    joinedload(Video.comments),
+                    joinedload(Video.likes)
+                )
+                .filter(Video.id == video_id)
+            )
+            video = result.scalars().first()
+
+            if not video:
+                raise HTTPException(status_code=404, detail="Video not found")
+
+            # 2. Delete from Vimeo first
+            try:
+                if video.vimeo_id:
+                    response = client.delete(f"/videos/{video.vimeo_id}")
+                    if response.status_code != 204:
+                        raise HTTPException(
+                            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                            detail=f"Vimeo deletion failed: {response.text}"
+                        )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Vimeo API error: {str(e)}"
+                )
+
+            # 3. Delete associated comments
+            if video.comments:
+                await db.execute(delete(Comment).where(Comment.video_id == video.id))
+
+            # 4. Delete associated likes
+            if video.likes:
+                await db.execute(delete(Like).where(Like.video_id == video.id))
+
+            # 5. Delete the video itself
+            await db.delete(video)
+
+            # 6. Delete thumbnail file if exists
+            if video.thumbnail_url and video.thumbnail_url.startswith("/thumbnails/"):
+                try:
+                    thumbnail_path = os.path.join("thumbnails", os.path.basename(video.thumbnail_url))
+                    if os.path.exists(thumbnail_path):
+                        os.remove(thumbnail_path)
+                except Exception as e:
+                    # Log but don't fail the operation
+                    print(f"Failed to delete thumbnail: {str(e)}")
+
+        return {"message": "Video deleted successfully"}
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Vimeo deletion failed: {str(e)}")
-    
-    await crud.delete_video(db, video)
-    return {"message": "Video deleted successfully"}
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete video: {str(e)}"
+        )
 
 @router.get("/search", response_model=List[schemas.VideoResponse])
 async def search_videos(
