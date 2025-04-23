@@ -1,7 +1,7 @@
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import delete, func
 import models
 import schemas
 import uuid
@@ -122,10 +122,19 @@ async def update_video(db: AsyncSession, db_video: models.Video, video_update: s
 
     return db_video
 
-# Delete a video
-async def delete_video(db: AsyncSession, video: models.Video):
-    await db.delete(video)
-    await db.commit()
+async def delete_video(db: AsyncSession, video_id: uuid.UUID):
+    # Start a transaction
+    async with db.begin():
+        # Delete all comments first
+        await db.execute(delete(models.Comment).where(models.Comment.video_id == video_id))
+        
+        # Delete all likes
+        await db.execute(delete(models.Like).where(models.Like.video_id == video_id))
+        
+        # Finally delete the video
+        await db.execute(delete(models.Video).where(models.Video.id == video_id))
+    
+    # No explicit commit needed as the context manager handles it
 
 # Create a new category
 async def create_category(db: AsyncSession, category: schemas.CategoryCreate):
