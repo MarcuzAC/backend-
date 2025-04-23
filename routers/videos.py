@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile, File, Form, logger, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile, File, Form, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete, func, select
@@ -224,96 +224,65 @@ async def update_video(
     )
 
 
-@router.delete(
-    "/{video_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    responses={
-        204: {"description": "Video deleted successfully"},
-        404: {"description": "Video not found"},
-        500: {"description": "Internal server error"}
-    }
-)
+@router.delete("/{video_id}")
 async def delete_video(
     video_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user)
 ):
-    """
-    Delete a video and all its associated data (comments, likes).
-    Also removes from Vimeo if video exists there.
-    """
     try:
-        # Start transaction
         async with db.begin():
-            # 1. Get video with relationships
-            result = await db.execute(
-                select(models.Video)
-                .options(
-                    joinedload(models.Video.comments),
-                    joinedload(models.Video.likes)
-                )
-                .where(models.Video.id == video_id)
+            # Delete comments first
+            await db.execute(
+                delete(models.Comment)
+                .where(models.Comment.video_id == video_id)
             )
-            video = result.scalars().first()
-            
+            # Delete likes
+            await db.execute(
+                delete(models.Like)
+                .where(models.Like.video_id == video_id)
+            )
+            # Delete video from Vimeo
+            video = await db.execute(
+                select(models.Video).filter(models.Video.id == video_id)
+            )
+            video = video.scalars().first()
             if not video:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Video not found"
-                )
-
-            # 2. Delete from Vimeo (if exists)
+                raise HTTPException(status_code=404, detail="Video not found")
             if video.vimeo_id:
                 try:
-                    response = client.delete(f"/videos/{video.vimeo_id}")
-                    if response.status_code != 204:
-                        logger.error(f"Vimeo deletion failed: {response.status_code} - {response.text}")
-                        raise HTTPException(
-                            status_code=status.HTTP_502_BAD_GATEWAY,
-                            detail="Failed to delete from Vimeo"
-                        )
+                    client.delete_video(video.vimeo_id)
                 except Exception as e:
-                    logger.error(f"Vimeo API error: {str(e)}")
                     raise HTTPException(
-                        status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail="Vimeo service unavailable"
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Failed to delete video from Vimeo: {str(e)}"
                     )
-
-            # 3. Delete associated comments (batch operation)
-            if video.comments:
-                await db.execute(
-                    delete(models.Comment)
-                    .where(models.Comment.video_id == video_id)
-                )
-
-            # 4. Delete associated likes (batch operation)
-            if video.likes:
-                await db.execute(
-                    delete(models.Like)
-                    .where(models.Like.video_id == video_id)
-                )
-
-            # 5. Delete video record
-            await db.delete(video)
-
-            # 6. Clean up thumbnail file if exists
-            if video.thumbnail_url and video.thumbnail_url.startswith("/thumbnails/"):
-                try:
-                    thumb_path = video.thumbnail_url.lstrip('/')
-                    if os.path.exists(thumb_path):
-                        os.remove(thumb_path)
-                except OSError as e:
-                    logger.warning(f"Could not delete thumbnail: {str(e)}")
-
+            # Delete thumbnail file if it exists
+            if video.thumbnail_url:
+                thumbnail_path = os.path.join("thumbnails", os.path.basename(video.thumbnail_url))
+                if os.path.exists(thumbnail_path):
+                    os.remove(thumbnail_path)
+            # Delete video from database
+            await db.execute(
+                delete(models.Video)
+                .where(models.Video.id == video_id)
+            )
+            # Commit the transaction
+            await db.commit()
+            
+            # Then delete video
+            await db.execute(
+                delete(models.Video)
+                .where(models.Video.id == video_id)
+            )
+            
         return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-    except HTTPException:
-        raise
+        
     except Exception as e:
-        logger.error(f"Unexpected error deleting video {video_id}: {str(e)}", exc_info=True)
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred while deleting the video"
+            detail=str(e)
         )
 
 @router.get("/search", response_model=List[schemas.VideoResponse])
