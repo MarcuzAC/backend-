@@ -46,8 +46,8 @@ class Video(Base):
     category = relationship("Category", back_populates="videos")
 
     # Relationships
-    likes = relationship("Like", back_populates="video", cascade="all, delete-orphan")
-    comments = relationship("Comment", back_populates="video", cascade="all, delete-orphan")
+    likes = relationship("Like", back_populates="video", cascade="all, delete")
+    comments = relationship("Comment", back_populates="video", cascade="all, delete")
 
 class Like(Base):
     __tablename__ = "likes"
