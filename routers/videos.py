@@ -227,8 +227,11 @@ async def update_video(
 @router.delete(
     "/{video_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete a video",
-    response_description="Video deleted successfully"
+    responses={
+        204: {"description": "Video deleted successfully"},
+        404: {"description": "Video not found"},
+        500: {"description": "Internal server error"}
+    }
 )
 async def delete_video(
     video_id: uuid.UUID,
@@ -236,22 +239,35 @@ async def delete_video(
     current_user: schemas.UserResponse = Depends(get_current_user)
 ):
     """
-    Delete a video and all its associated data.
+    Delete a video and all its associated data (comments, likes).
+    Also removes from Vimeo if video exists there.
     """
     try:
         # Start transaction
         async with db.begin():
-            # 1. Get the video
-            video = await db.get(models.Video, video_id)
+            # 1. Get video with relationships
+            result = await db.execute(
+                select(models.Video)
+                .options(
+                    joinedload(models.Video.comments),
+                    joinedload(models.Video.likes)
+                )
+                .where(models.Video.id == video_id)
+            )
+            video = result.scalars().first()
+            
             if not video:
-                raise HTTPException(status_code=404, detail="Video not found")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Video not found"
+                )
 
-            # 2. Delete from Vimeo
+            # 2. Delete from Vimeo (if exists)
             if video.vimeo_id:
                 try:
                     response = client.delete(f"/videos/{video.vimeo_id}")
                     if response.status_code != 204:
-                        logger.error(f"Vimeo deletion failed: {response.status_code} {response.text}")
+                        logger.error(f"Vimeo deletion failed: {response.status_code} - {response.text}")
                         raise HTTPException(
                             status_code=status.HTTP_502_BAD_GATEWAY,
                             detail="Failed to delete from Vimeo"
@@ -263,30 +279,24 @@ async def delete_video(
                         detail="Vimeo service unavailable"
                     )
 
-            # 3. Delete associated data
-            try:
-                # Delete comments
+            # 3. Delete associated comments (batch operation)
+            if video.comments:
                 await db.execute(
                     delete(models.Comment)
                     .where(models.Comment.video_id == video_id)
                 )
-                
-                # Delete likes
+
+            # 4. Delete associated likes (batch operation)
+            if video.likes:
                 await db.execute(
                     delete(models.Like)
                     .where(models.Like.video_id == video_id)
                 )
-            except Exception as e:
-                logger.error(f"Database deletion error: {str(e)}")
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to delete associated data"
-                )
 
-            # 4. Delete video record
+            # 5. Delete video record
             await db.delete(video)
 
-            # 5. Cleanup thumbnail if exists
+            # 6. Clean up thumbnail file if exists
             if video.thumbnail_url and video.thumbnail_url.startswith("/thumbnails/"):
                 try:
                     thumb_path = video.thumbnail_url.lstrip('/')
@@ -300,10 +310,10 @@ async def delete_video(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error deleting video: {str(e)}")
+        logger.error(f"Unexpected error deleting video {video_id}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred"
+            detail="An unexpected error occurred while deleting the video"
         )
 
 @router.get("/search", response_model=List[schemas.VideoResponse])
