@@ -227,7 +227,7 @@ async def update_video(
 async def delete_video(
     video_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: schemas.User = Depends(get_current_user)
+    current_user: schemas.UserResponse = Depends(get_current_user)
 ):
     """
     Delete a video and all its associated data (comments, likes) in a transaction.

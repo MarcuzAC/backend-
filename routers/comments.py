@@ -43,7 +43,7 @@ async def get_comments(
     return await crud.get_comments(db=db, video_id=video_id)
 
 
-@router.put("/comments/{comment_id}", response_model=schemas.Comment)
+@router.put("/comments/{comment_id}", response_model=schemas.CommentResponse)
 async def update_comment(
     comment_id: UUID,
     updated_data: schemas.CommentUpdate,  # assuming it has a 'text' field
