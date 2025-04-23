@@ -18,11 +18,11 @@ class User(Base):
     is_admin = Column(Boolean, default=False)
     hashed_password = Column(String)
     reset_token = Column(String, nullable=True)
-    avatar_url = Column(String, nullable=True)  # Added avatar URL field
+    avatar_url = Column(String, nullable=True)
 
     # Relationships
-    likes = relationship("Like", back_populates="user")
-    comments = relationship("Comment", back_populates="user")
+    likes = relationship("Like", back_populates="user", cascade="all, delete-orphan")
+    comments = relationship("Comment", back_populates="user", cascade="all, delete-orphan")
 
 class Category(Base):
     __tablename__ = "categories"
@@ -30,7 +30,7 @@ class Category(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), unique=True, index=True)
 
-    videos = relationship("Video", back_populates="category")
+    videos = relationship("Video", back_populates="category", cascade="all, delete-orphan")
 
 class Video(Base):
     __tablename__ = "videos"
@@ -39,27 +39,27 @@ class Video(Base):
     title = Column(String(100), nullable=False)
     thumbnail_url = Column(String)
     created_date = Column(DateTime, default=datetime.datetime.utcnow)
-    category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id"))
+    category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"))
     vimeo_url = Column(String)
     vimeo_id = Column(String)
 
     category = relationship("Category", back_populates="videos")
 
     # Relationships
-    likes = relationship("Like", back_populates="video", cascade="all, delete")
-    comments = relationship("Comment", back_populates="video", cascade="all, delete")
+    likes = relationship("Like", back_populates="video", cascade="all, delete-orphan")
+    comments = relationship("Comment", back_populates="video", cascade="all, delete-orphan")
 
 class Like(Base):
     __tablename__ = "likes"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     # Relationships
-    user = relationship("User", back_populates="likes", cascade="all, delete")
-    video = relationship("Video", back_populates="likes", cascade="all, delete")
+    user = relationship("User", back_populates="likes")
+    video = relationship("Video", back_populates="likes")
 
     # Ensure a user can like a video only once
     __table_args__ = (
@@ -70,15 +70,15 @@ class Comment(Base):
     __tablename__ = "comments"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False)
     text = Column(Text, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, onupdate=func.now())  # Added for tracking edits
+    updated_at = Column(DateTime, onupdate=func.now())
 
     # Relationships
-    user = relationship("User", back_populates="comments", cascade="all, delete")
-    video = relationship("Video", back_populates="comments", cascade="all, delete")
+    user = relationship("User", back_populates="comments")
+    video = relationship("Video", back_populates="comments")
 
     def __repr__(self):
         return f"<Comment(id={self.id}, user_id={self.user_id}, video_id={self.video_id})>"

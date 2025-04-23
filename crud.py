@@ -294,6 +294,7 @@ async def update_comment(
     await db.commit()
     await db.refresh(comment)
     return comment
+
 # Delete Comment
 async def delete_comment(
     db: AsyncSession, 
@@ -301,8 +302,8 @@ async def delete_comment(
     current_user_id: uuid.UUID
 ):
     # Fetch the comment
-    comment = await db.execute(select(models.Comment).filter(models.Comment.id == comment_id))
-    comment = comment.scalars().first()
+    result = await db.execute(select(models.Comment).filter(models.Comment.id == comment_id))
+    comment = result.scalars().first()
 
     if not comment:
         raise ValueError("Comment not found")
@@ -310,7 +311,7 @@ async def delete_comment(
     if comment.user_id != current_user_id:
         raise ValueError("You are not authorized to delete this comment")
 
-    # Delete the comment
     await db.delete(comment)
     await db.commit()
-    return comment
+    return {"detail": "Comment deleted successfully"}
+
