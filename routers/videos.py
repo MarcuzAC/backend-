@@ -5,6 +5,7 @@ from sqlalchemy import delete, func, select
 from typing import List, Optional
 from database import get_db
 from auth import get_current_user
+import models
 import schemas
 import crud
 import uuid
@@ -223,19 +224,76 @@ async def update_video(
     )
 
 
-@router.delete("/{video_id}")
-async def delete_video_endpoint(
+@router.delete(
+    "/{video_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a video",
+    description="Delete a video and all its associated comments and likes",
+    response_description="No content - successful deletion",
+    tags=["videos"]  # Make sure this matches your router tags
+)
+async def delete_video(
     video_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: schemas.UserResponse = Depends(get_current_user)
 ):
+    """
+    Delete a video with all its associated data.
+    
+    - Deletes all comments on the video
+    - Deletes all likes on the video
+    - Removes the video from Vimeo
+    - Deletes the video record
+    - Returns 204 No Content on success
+    """
     try:
-        await crud.delete_video(db, video_id)
-        return Response(status_code=status.HTTP_204_NO_CONTENT)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        # Start transaction
+        async with db.begin():
+            # Get the video
+            video = await db.get(models.Video, video_id)
+            if not video:
+                raise HTTPException(status_code=404, detail="Video not found")
+
+            # Delete from Vimeo first
+            if video.vimeo_id:
+                try:
+                    response = client.delete(f"/videos/{video.vimeo_id}")
+                    if response.status_code != 204:
+                        raise Exception(f"Vimeo API returned {response.status_code}")
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Failed to delete from Vimeo: {str(e)}"
+                    )
+
+            # Delete associated comments
+            await db.execute(delete(models.Comment).where(models.Comment.video_id == video_id))
+
+            # Delete associated likes
+            await db.execute(delete(models.Like).where(models.Like.video_id == video_id))
+
+            # Delete the video
+            await db.delete(video)
+
+            # Clean up thumbnail file if exists
+            if video.thumbnail_url and video.thumbnail_url.startswith("/thumbnails/"):
+                try:
+                    thumbnail_path = video.thumbnail_url.lstrip('/')
+                    if os.path.exists(thumbnail_path):
+                        os.remove(thumbnail_path)
+                except OSError as e:
+                    print(f"Warning: Could not delete thumbnail {thumbnail_path}: {e}")
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Video deletion failed: {str(e)}"
+        )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @router.get("/search", response_model=List[schemas.VideoResponse])
 async def search_videos(
