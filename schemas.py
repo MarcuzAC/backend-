@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import Optional, List
 import uuid
 from datetime import datetime
@@ -32,10 +32,9 @@ class UserResponse(UserBase):
     id: uuid.UUID
     is_admin: bool
     avatar_url: Optional[str] = None
-    # comments: Optional[List['CommentResponse']] = []  # Uncomment if needed
+    # comments: Optional[List['CommentResponse']] = None  # Uncomment if needed
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)  # Replaces orm_mode=True
 
 class VideoBase(BaseModel):
     title: str
@@ -58,10 +57,9 @@ class VideoResponse(BaseModel):
     thumbnail_url: Optional[str] = None
     like_count: Optional[int] = 0
     comment_count: Optional[int] = 0
-    # comments: Optional[List['CommentResponse']] = []  # Uncomment if needed
+    # comments: Optional[List['CommentResponse']] = None  # Uncomment if needed
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class CategoryBase(BaseModel):
     name: str
@@ -73,8 +71,7 @@ class CategoryResponse(CategoryBase):
     id: uuid.UUID
     video_count: Optional[int] = 0
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class Token(BaseModel):
     access_token: str
@@ -93,8 +90,7 @@ class LikeResponse(LikeBase):
     created_at: datetime
     user: Optional[UserResponse] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class CommentBase(BaseModel):
     text: str
@@ -115,5 +111,4 @@ class CommentResponse(BaseModel):
     updated_at: Optional[datetime] = None
     user: UserResponse
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
