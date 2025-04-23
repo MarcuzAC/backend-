@@ -58,8 +58,8 @@ class Like(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     # Relationships
-    user = relationship("User", back_populates="likes")
-    video = relationship("Video", back_populates="likes")
+    user = relationship("User", back_populates="likes", cascade="all, delete")
+    video = relationship("Video", back_populates="likes", cascade="all, delete")
 
     # Ensure a user can like a video only once
     __table_args__ = (
@@ -77,8 +77,8 @@ class Comment(Base):
     updated_at = Column(DateTime, onupdate=func.now())  # Added for tracking edits
 
     # Relationships
-    user = relationship("User", back_populates="comments")
-    video = relationship("Video", back_populates="comments")
+    user = relationship("User", back_populates="comments", cascade="all, delete")
+    video = relationship("Video", back_populates="comments", cascade="all, delete")
 
     def __repr__(self):
         return f"<Comment(id={self.id}, user_id={self.user_id}, video_id={self.video_id})>"
