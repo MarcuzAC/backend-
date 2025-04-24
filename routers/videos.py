@@ -285,10 +285,7 @@ async def delete_video(
                 print(f"Failed to delete thumbnail file: {str(e)}")
 
         # Delete video from database (this will cascade to likes and comments)
-        await db.execute(
-            delete(models.Video)
-            .where(models.Video.id == video_id)
-        )
+        await db.delete(video)
         await db.commit()
         
         return Response(status_code=status.HTTP_204_NO_CONTENT)
