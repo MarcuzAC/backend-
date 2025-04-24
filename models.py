@@ -60,6 +60,7 @@ class Like(Base):
     # Relationships
     user = relationship("User", back_populates="likes")
     video = relationship("Video", back_populates="likes")
+    video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False)
 
     # Ensure a user can like a video only once
     __table_args__ = (
@@ -77,8 +78,12 @@ class Comment(Base):
     updated_at = Column(DateTime, onupdate=func.now())
 
     # Relationships
+    
     user = relationship("User", back_populates="comments")
     video = relationship("Video", back_populates="comments")
+    video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False)
+
+
 
     def __repr__(self):
         return f"<Comment(id={self.id}, user_id={self.user_id}, video_id={self.video_id})>"
