@@ -30,8 +30,16 @@ async def create_video(
     category_id: uuid.UUID = Form(...),
     file: UploadFile = File(...),
     thumbnail: Optional[UploadFile] = File(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: schemas.UserResponse = Depends(get_current_user)
 ):
+    # Verify user is admin
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin users can upload videos"
+        )
+
     temp_path = None
     thumbnail_path = None
     try:
@@ -161,8 +169,16 @@ async def update_video(
     video_id: uuid.UUID,
     video_update: schemas.VideoUpdate,
     thumbnail: Optional[UploadFile] = File(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: schemas.UserResponse = Depends(get_current_user)
 ):
+    # Verify user is admin
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin users can update videos"
+        )
+
     result = await db.execute(
         select(Video).options(joinedload(Video.category)).filter(Video.id == video_id)
     )
@@ -187,6 +203,13 @@ async def update_video(
             )
 
         try:
+            # First remove old thumbnail if it exists
+            if video.thumbnail_url:
+                old_thumbnail_path = os.path.join("thumbnails", os.path.basename(video.thumbnail_url))
+                if os.path.exists(old_thumbnail_path):
+                    os.remove(old_thumbnail_path)
+
+            # Save new thumbnail
             thumbnail_filename = f"{uuid.uuid4()}{os.path.splitext(thumbnail.filename)[1]}"
             thumbnail_dir = "thumbnails"
             os.makedirs(thumbnail_dir, exist_ok=True)
@@ -218,52 +241,60 @@ async def update_video(
         thumbnail_url=video.thumbnail_url
     )
 
+# Delete a video
 @router.delete("/{video_id}")
 async def delete_video(
     video_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user)
 ):
+    # Verify user is admin
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin users can delete videos"
+        )
+
     try:
-        async with db.begin():
-            # Delete comments first
-            await db.execute(
-                delete(models.Comment)
-                .where(models.Comment.video_id == video_id)
-            )
-            # Delete likes
-            await db.execute(
-                delete(models.Like)
-                .where(models.Like.video_id == video_id)
-            )
-            # Delete video from Vimeo
-            video = await db.execute(
-                select(models.Video).filter(models.Video.id == video_id)
-            )
-            video = video.scalars().first()
-            if not video:
-                raise HTTPException(status_code=404, detail="Video not found")
-            if video.vimeo_id:
-                try:
-                    client.delete_video(video.vimeo_id)
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=f"Failed to delete video from Vimeo: {str(e)}"
-                    )
-            # Delete thumbnail file if it exists
-            if video.thumbnail_url:
+        # First get the video to check existence and get Vimeo ID
+        result = await db.execute(
+            select(models.Video).filter(models.Video.id == video_id)
+        )
+        video = result.scalars().first()
+        
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+
+        # Delete video from Vimeo
+        if video.vimeo_id:
+            try:
+                client.delete_video(video.vimeo_id)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to delete video from Vimeo: {str(e)}"
+                )
+
+        # Delete thumbnail file if it exists
+        if video.thumbnail_url:
+            try:
                 thumbnail_path = os.path.join("thumbnails", os.path.basename(video.thumbnail_url))
                 if os.path.exists(thumbnail_path):
                     os.remove(thumbnail_path)
-            # Delete video from database
-            await db.execute(
-                delete(models.Video)
-                .where(models.Video.id == video_id)
-            )
-            
+            except Exception as e:
+                print(f"Failed to delete thumbnail file: {str(e)}")
+
+        # Delete video from database (this will cascade to likes and comments)
+        await db.execute(
+            delete(models.Video)
+            .where(models.Video.id == video_id)
+        )
+        await db.commit()
+        
         return Response(status_code=status.HTTP_204_NO_CONTENT)
         
+    except HTTPException:
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(
@@ -271,6 +302,7 @@ async def delete_video(
             detail=str(e)
         )
 
+# Search videos
 @router.get("/search", response_model=List[schemas.VideoResponse])
 async def search_videos(
     query: Optional[str] = None,
@@ -279,7 +311,7 @@ async def search_videos(
     limit: int = 100,
     db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(Video).offset(skip).limit(limit)
+    stmt = select(Video).options(joinedload(Video.category)).offset(skip).limit(limit)
     
     if query:
         stmt = stmt.where(Video.title.ilike(f"%{query}%"))
@@ -290,8 +322,17 @@ async def search_videos(
     result = await db.execute(stmt)
     videos = result.scalars().all()
     
-    return videos
+    return [schemas.VideoResponse(
+        id=video.id,
+        title=video.title,
+        created_date=video.created_date,
+        vimeo_url=video.vimeo_url,
+        vimeo_id=video.vimeo_id,
+        category=video.category.name if video.category else None,
+        thumbnail_url=video.thumbnail_url
+    ) for video in videos]
 
+# Get all videos
 @router.get("/", response_model=List[schemas.VideoResponse])
 async def read_videos(
     skip: int = 0,
@@ -302,6 +343,7 @@ async def read_videos(
     videos = await crud.get_all_videos(db, skip=skip, limit=limit, category_id=category_id)
     return videos
 
+# Get video by ID
 @router.get("/{video_id}", response_model=schemas.VideoResponse)
 async def read_video(
     video_id: uuid.UUID,
@@ -325,17 +367,22 @@ async def read_video(
         vimeo_id=video.vimeo_id,
         category=video.category.name if video.category else None,
         thumbnail_url=video.thumbnail_url,
-        likes=video.likes,
-        comments=video.comments
+        likes_count=len(video.likes),
+        comments_count=len(video.comments)
     )
 
+# Share video endpoint
 @router.get("/share/{video_id}", response_class=HTMLResponse)
 async def share_video(
     video_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-    video = await crud.get_video(db, video_id)
+    result = await db.execute(
+        select(Video).filter(Video.id == video_id)
+    )
+    video = result.scalars().first()
+
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
@@ -349,7 +396,7 @@ async def share_video(
     <head>
         <meta property="og:title" content="{video.title}">
         <meta property="og:description" content="Watch this video in MCL TV app.">
-        <meta property="og:image" content="{request.base_url}{video.thumbnail_url.lstrip('/')}">
+        <meta property="og:image" content="{request.base_url}{video.thumbnail_url.lstrip('/') if video.thumbnail_url else ''}">
         <meta property="og:url" content="{request.url}">
         <script>
             function redirectToApp() {{
