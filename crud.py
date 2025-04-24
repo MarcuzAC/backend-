@@ -68,17 +68,22 @@ async def delete_category(db: AsyncSession, category: models.Category):
     await db.commit()
 
 # Video Operations
-async def get_all_videos(db: AsyncSession, skip: int = 0, limit: int = 100):
-    result = await db.execute(
+async def get_all_videos(db: AsyncSession, skip: int = 0, limit: int = 100, category_id: Optional[uuid.UUID] = None):
+    query = (
         select(models.Video.id, models.Video.title, models.Video.created_date, 
                models.Video.vimeo_url, models.Video.vimeo_id, models.Video.thumbnail_url, 
                models.Category.name.label("category"))
-        .join(models.Category, models.Video.category_id == models.Category.id)
+        .join(models.Category, models.Video.category_id == models.Category.id, isouter=True)
         .offset(skip)
         .limit(limit)
     )
     
+    if category_id:
+        query = query.where(models.Video.category_id == category_id)
+    
+    result = await db.execute(query)
     videos = result.all()
+    
     return [
         {
             "id": v.id,
@@ -96,7 +101,13 @@ async def get_all_videos(db: AsyncSession, skip: int = 0, limit: int = 100):
 
 async def get_video(db: AsyncSession, video_id: uuid.UUID):
     result = await db.execute(
-        select(models.Video).options(joinedload(models.Video.category)).filter(models.Video.id == video_id)
+        select(models.Video)
+        .options(
+            joinedload(models.Video.category),
+            joinedload(models.Video.likes),
+            joinedload(models.Video.comments).joinedload(models.Comment.user)
+        )
+        .filter(models.Video.id == video_id)
     )
     return result.scalars().first()
 
@@ -110,11 +121,7 @@ async def create_video(db: AsyncSession, video: schemas.VideoCreate, vimeo_url: 
     db.add(db_video)
     await db.commit()
     await db.refresh(db_video)
-    
-    result = await db.execute(
-        select(models.Video).options(joinedload(models.Video.category)).filter(models.Video.id == db_video.id)
-    )
-    return result.scalars().first()
+    return db_video
 
 async def update_video(db: AsyncSession, db_video: models.Video, video_update: schemas.VideoUpdate):
     update_data = video_update.model_dump(exclude_unset=True)
@@ -133,17 +140,17 @@ async def update_video(db: AsyncSession, db_video: models.Video, video_update: s
     return db_video
 
 async def delete_video(db: AsyncSession, video: models.Video):
-    """Delete video while preserving comments/likes (sets their video_id to NULL)"""
+    """Delete video with cascading deletes for comments and likes"""
     await db.delete(video)
     await db.commit()
     return {"detail": "Video deleted successfully"}
 
-async def get_recent_videos(db: AsyncSession):
+async def get_recent_videos(db: AsyncSession, limit: int = 5):
     result = await db.execute(
         select(models.Video)
         .options(joinedload(models.Video.category))
         .order_by(models.Video.created_date.desc())
-        .limit(5)
+        .limit(limit)
     )
 
     videos = result.scalars().all()
@@ -164,8 +171,11 @@ async def get_recent_videos(db: AsyncSession):
 
 # Like Operations
 async def add_like(db: AsyncSession, like: schemas.LikeCreate):
+    # Check if like already exists
     existing_like = await db.execute(
-        select(models.Like).filter(models.Like.user_id == like.user_id, models.Like.video_id == like.video_id)
+        select(models.Like)
+        .where(models.Like.user_id == like.user_id)
+        .where(models.Like.video_id == like.video_id)
     )
     if existing_like.scalars().first():
         raise ValueError("User has already liked this video")
@@ -177,10 +187,12 @@ async def add_like(db: AsyncSession, like: schemas.LikeCreate):
     return db_like
 
 async def remove_like(db: AsyncSession, user_id: uuid.UUID, video_id: uuid.UUID):
-    like = await db.execute(
-        select(models.Like).filter(models.Like.user_id == user_id, models.Like.video_id == video_id)
+    result = await db.execute(
+        select(models.Like)
+        .where(models.Like.user_id == user_id)
+        .where(models.Like.video_id == video_id)
     )
-    like = like.scalars().first()
+    like = result.scalars().first()
     if not like:
         raise ValueError("Like not found")
 
@@ -190,9 +202,18 @@ async def remove_like(db: AsyncSession, user_id: uuid.UUID, video_id: uuid.UUID)
 
 async def get_like_count(db: AsyncSession, video_id: uuid.UUID):
     result = await db.scalar(
-        select(func.count(models.Like.id)).filter(models.Like.video_id == video_id)
+        select(func.count(models.Like.id))
+        .where(models.Like.video_id == video_id)
     )
     return result or 0
+
+async def has_user_liked(db: AsyncSession, user_id: uuid.UUID, video_id: uuid.UUID):
+    result = await db.scalar(
+        select(models.Like.id)
+        .where(models.Like.user_id == user_id)
+        .where(models.Like.video_id == video_id)
+    )
+    return result is not None
 
 # Comment Operations
 async def add_comment(db: AsyncSession, comment: schemas.CommentCreate, user_id: uuid.UUID):
@@ -210,20 +231,24 @@ async def get_comments(db: AsyncSession, video_id: uuid.UUID):
     result = await db.execute(
         select(models.Comment)
         .options(joinedload(models.Comment.user))
-        .filter(models.Comment.video_id == video_id)
+        .where(models.Comment.video_id == video_id)
         .order_by(models.Comment.created_at.desc())
     )
     return result.scalars().all()
 
 async def get_comment_count(db: AsyncSession, video_id: uuid.UUID):
     result = await db.scalar(
-        select(func.count(models.Comment.id)).filter(models.Comment.video_id == video_id)
+        select(func.count(models.Comment.id))
+        .where(models.Comment.video_id == video_id)
     )
     return result or 0
 
 async def update_comment(db: AsyncSession, comment_id: uuid.UUID, new_text: str, user_id: uuid.UUID):
-    comment = await db.execute(select(models.Comment).filter(models.Comment.id == comment_id))
-    comment = comment.scalars().first()
+    result = await db.execute(
+        select(models.Comment)
+        .where(models.Comment.id == comment_id)
+    )
+    comment = result.scalars().first()
 
     if not comment:
         raise ValueError("Comment not found")
@@ -237,7 +262,10 @@ async def update_comment(db: AsyncSession, comment_id: uuid.UUID, new_text: str,
     return comment
 
 async def delete_comment(db: AsyncSession, comment_id: uuid.UUID, current_user_id: uuid.UUID):
-    result = await db.execute(select(models.Comment).filter(models.Comment.id == comment_id))
+    result = await db.execute(
+        select(models.Comment)
+        .where(models.Comment.id == comment_id)
+    )
     comment = result.scalars().first()
 
     if not comment:
@@ -251,9 +279,9 @@ async def delete_comment(db: AsyncSession, comment_id: uuid.UUID, current_user_i
 
 # Dashboard Operations
 async def get_dashboard_stats(db: AsyncSession):
-    total_users = await db.scalar(func.count(models.User.id))
-    total_videos = await db.scalar(func.count(models.Video.id))
-    total_categories = await db.scalar(func.count(models.Category.id))
+    total_users = await db.scalar(select(func.count(models.User.id)))
+    total_videos = await db.scalar(select(func.count(models.Video.id)))
+    total_categories = await db.scalar(select(func.count(models.Category.id)))
 
     return {
         "total_users": total_users or 0,
