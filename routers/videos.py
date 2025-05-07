@@ -385,7 +385,7 @@ async def share_video(
 
     user_agent = request.headers.get("user-agent", "").lower()
     is_android = "android" in user_agent
-    apk_download_url = "https://www.mediafire.com/file/p4bfs7dc7x78ivz/mcltv.apk/file"
+    apk_download_url = "https://www.mediafire.com/file/uj2s3y6nmkkze12/mlctv.apk/file"
     
     html_content = f"""
     <!DOCTYPE html>
