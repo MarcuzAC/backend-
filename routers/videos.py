@@ -308,29 +308,24 @@ async def search_videos(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Search videos by title with optional category filtering
-    Returns paginated results of videos matching the search query
+    Search videos by title with optional category filtering.
+    Returns paginated results of videos matching the search query.
     """
     try:
-        # Base query with joined category
-        stmt = select(Video).options(joinedload(Video.category))
-        
-        # Apply search filter
-        if query:
-            stmt = stmt.where(Video.title.ilike(f"%{query}%"))
-        
-        # Apply category filter if provided
+        stmt = (
+            select(Video)
+            .options(joinedload(Video.category))
+            .filter(Video.title.ilike(f"%{query}%"))
+        )
+
         if category_id:
-            stmt = stmt.where(Video.category_id == category_id)
-        
-        # Apply pagination
+            stmt = stmt.filter(Video.category_id == category_id)
+
         stmt = stmt.offset(skip).limit(limit)
-        
-        # Execute query
+
         result = await db.execute(stmt)
-        videos = result.scalars().unique().all()
-        
-        # Convert to response model
+        videos = result.scalars().all()
+
         return [
             schemas.VideoResponse(
                 id=video.id,
@@ -339,18 +334,17 @@ async def search_videos(
                 vimeo_url=video.vimeo_url,
                 vimeo_id=video.vimeo_id,
                 category=video.category.name if video.category else None,
-                thumbnail_url=video.thumbnail_url,
-                likes_count=len(video.likes),
-                comments_count=len(video.comments)
+                thumbnail_url=video.thumbnail_url
             )
             for video in videos
         ]
-        
+
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error searching videos: {str(e)}"
+            detail=f"Search failed: {str(e)}"
         )
+
 
 # Get all videos
 @router.get("/", response_model=List[schemas.VideoResponse])
