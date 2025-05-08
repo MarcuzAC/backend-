@@ -301,29 +301,51 @@ async def delete_video(
 
 @router.get("/search", response_model=List[schemas.VideoResponse])
 async def search_videos(
-    query: str = Query(..., min_length=1, description="Search query string"),
+    query: str = Query(..., min_length=1, max_length=100, description="Search term for video titles"),
+    category_id: Optional[uuid.UUID] = Query(None, description="Optional category filter"),
+    skip: int = Query(0, ge=0, description="Pagination offset"),
+    limit: int = Query(100, ge=1, le=1000, description="Pagination limit"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Search videos by title"""
-    stmt = select(Video).options(joinedload(Video.category))
-    
-    if query:
-        stmt = stmt.where(Video.title.ilike(f"%{query}%"))
-    
-    result = await db.execute(stmt)
-    videos = result.scalars().all()
-    
-    return [schemas.VideoResponse(
-        id=video.id,
-        title=video.title,
-        created_date=video.created_date,
-        vimeo_url=video.vimeo_url,
-        vimeo_id=video.vimeo_id,
-        category=video.category.name if video.category else None,
-        thumbnail_url=video.thumbnail_url,
-        likes_count=len(video.likes),
-        comments_count=len(video.comments)
-    ) for video in videos]
+    """
+    Search videos by title with optional category filtering.
+    Returns paginated results of videos matching the search query.
+    """
+    try:
+        stmt = (
+            select(Video)
+            .options(joinedload(Video.category))
+            .filter(Video.title.ilike(f"%{query}%"))
+        )
+
+        if category_id:
+            stmt = stmt.filter(Video.category_id == category_id)
+
+        stmt = stmt.offset(skip).limit(limit)
+
+        result = await db.execute(stmt)
+        videos = result.scalars().all()
+
+        return [
+            schemas.VideoResponse(
+                id=video.id,
+                title=video.title,
+                created_date=video.created_date,
+                vimeo_url=video.vimeo_url,
+                vimeo_id=video.vimeo_id,
+                category=video.category.name if video.category else None,
+                thumbnail_url=video.thumbnail_url
+            )
+            for video in videos
+        ]
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Search failed: {str(e)}"
+        )
+
+
 # Get all videos
 @router.get("/", response_model=List[schemas.VideoResponse])
 async def read_videos(
