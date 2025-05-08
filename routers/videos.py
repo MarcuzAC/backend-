@@ -5,7 +5,7 @@ import tempfile
 from typing import List, Optional
 
 from fastapi import (
-    APIRouter, Depends, HTTPException, Request, Response, 
+    APIRouter, Depends, HTTPException, Query, Request, Response, 
     UploadFile, File, Form, status
 )
 from fastapi.responses import HTMLResponse
@@ -299,22 +299,16 @@ async def delete_video(
             detail=str(e)
         )
 
-# Search videos
 @router.get("/search", response_model=List[schemas.VideoResponse])
 async def search_videos(
-    query: Optional[str] = None,
-    category_id: Optional[uuid.UUID] = None,
-    skip: int = 0,
-    limit: int = 100,
+    query: str = Query(..., min_length=1, max_length=100),
     db: AsyncSession = Depends(get_db)
 ):
-    stmt = select(Video).options(joinedload(Video.category)).offset(skip).limit(limit)
+    """Search videos by title"""
+    stmt = select(Video).options(joinedload(Video.category))
     
     if query:
         stmt = stmt.where(Video.title.ilike(f"%{query}%"))
-    
-    if category_id:
-        stmt = stmt.where(Video.category_id == category_id)
     
     result = await db.execute(stmt)
     videos = result.scalars().all()
