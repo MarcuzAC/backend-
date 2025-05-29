@@ -2,9 +2,6 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta
 import aiosmtplib
 from email.message import EmailMessage
-import os
-import uuid
-from fastapi import UploadFile, HTTPException, status
 
 # JWT Configuration
 SECRET_KEY = "your-secret-key"  
@@ -37,29 +34,3 @@ async def send_reset_email(email: str, token: str):
         password=SMTP_PASSWORD,
         use_tls=True,
     )
-
-
-async def save_upload_file(file: UploadFile):
-    """Save uploaded file to static folder and return URL"""
-    try:
-        # Create uploads directory if it doesn't exist
-        os.makedirs("static/uploads", exist_ok=True)
-        
-        # Generate unique filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_ext = file.filename.split(".")[-1]
-        filename = f"{timestamp}_{uuid.uuid4().hex[:8]}.{file_ext}"
-        filepath = f"static/uploads/{filename}"
-        
-        # Save file
-        with open(filepath, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
-        
-        return f"/static/uploads/{filename}"
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error saving file: {str(e)}"
-        )
