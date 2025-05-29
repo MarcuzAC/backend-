@@ -82,3 +82,26 @@ class Comment(Base):
 
     def __repr__(self):
         return f"<Comment(id={self.id}, user_id={self.user_id}, video_id={self.video_id})>"
+    
+class News(Base):
+    __tablename__ = "news"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(100), nullable=False)
+    content = Column(Text, nullable=False)  # Using Text for unlimited length
+    image_url = Column(String(255), nullable=True)
+    is_published = Column(Boolean, default=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
+    author_id = Column(
+        UUID(as_uuid=True), 
+        ForeignKey("users.id", ondelete="CASCADE"), 
+        nullable=False,
+        index=True
+    )
+    
+    # Relationships
+    author = relationship("User")
+
+    def __repr__(self):
+        return f"<News(id={self.id}, title='{self.title}', author_id={self.author_id})>"

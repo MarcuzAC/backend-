@@ -130,3 +130,41 @@ class CommentResponse(BaseModel):
     video: Optional[VideoResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+class NewsBase(BaseModel):
+    title: str = Field(..., min_length=1, max_length=100)
+    content: str = Field(..., min_length=1)  # No upper limit on content length
+    is_published: bool = False
+
+class NewsCreate(NewsBase):
+    image_url: Optional[str] = Field(
+        None, 
+        max_length=255, 
+        description="URL of the news image"
+    )
+
+class NewsUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=100)
+    content: Optional[str] = Field(None, min_length=1)  # No upper limit
+    image_url: Optional[str] = Field(
+        None, 
+        max_length=255, 
+        description="URL of the news image"
+    )
+    is_published: Optional[bool] = None
+
+class NewsResponse(NewsBase):
+    id: uuid.UUID
+    image_url: Optional[str] = Field(None, max_length=255)
+    author_id: uuid.UUID
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    author: Optional[UserResponse] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class NewsListResponse(BaseModel):
+    items: List[NewsResponse]
+    total: int
+    page: int
+    size: int

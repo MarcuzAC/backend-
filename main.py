@@ -5,7 +5,7 @@ from fastapi.responses import RedirectResponse
 from database import engine
 import models
 from auth import router as auth_router
-from routers import users, videos, categories, likes, comments
+from routers import users, videos, categories, likes, comments, news
 
 app = FastAPI(
     title="Video API",

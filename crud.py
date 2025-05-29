@@ -289,3 +289,44 @@ async def get_dashboard_stats(db: AsyncSession):
         "total_categories": total_categories or 0,
         "revenue": 0
     }
+
+async def create_news(
+    db: AsyncSession, 
+    news_data: dict, 
+    author_id: uuid.UUID
+):
+    db_news = models.News(
+        title=news_data['title'],
+        content=news_data['content'],
+        image_url=news_data.get('image_url'),
+        image_path=news_data.get('image_path'),
+        author_id=author_id,
+        is_published=news_data.get('is_published', True)
+    )
+    db.add(db_news)
+    await db.commit()
+    await db.refresh(db_news)
+    return db_news
+
+async def update_news(
+    db: AsyncSession, 
+    news_id: uuid.UUID, 
+    news_data: dict
+):
+    result = await db.execute(
+        select(models.News)
+        .filter(models.News.id == news_id)
+    )
+    db_news = result.scalars().first()
+    if not db_news:
+        return None
+    
+    for key, value in news_data.items():
+        if value is not None:
+            setattr(db_news, key, value)
+    
+    db_news.updated_at = func.now()
+    db.add(db_news)
+    await db.commit()
+    await db.refresh(db_news)
+    return db_news
