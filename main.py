@@ -31,6 +31,7 @@ app.include_router(videos.router)
 app.include_router(categories.router)
 app.include_router(likes.router)
 app.include_router(comments.router)
+app.include_router(news.router)
 
 # Redirect from / to /redoc
 @app.get("/")
