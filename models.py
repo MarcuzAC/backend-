@@ -66,6 +66,22 @@ class Like(Base):
         UniqueConstraint('user_id', 'video_id', name='unique_user_video_like'),
     )
 
+    # Add this to your models file (where User, Video, etc. are defined)
+
+class News(Base):
+    __tablename__ = "news"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String(200), nullable=False)
+    content = Column(Text, nullable=False)  # Unlimited words
+    image_url = Column(String, nullable=False)  # Must have an image
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
+    author_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    # Relationship
+    author = relationship("User")
+
 class Comment(Base):
     __tablename__ = "comments"
 

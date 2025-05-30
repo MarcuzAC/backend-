@@ -9,9 +9,12 @@ from database import get_db
 from models import News, User
 from schemas import NewsCreate, NewsUpdate, NewsResponse, NewsListResponse
 from auth import get_current_user
-from utils import save_upload_file  # You'll need to implement this
+# from utils import save_upload_file 
 
 router = APIRouter(prefix="/news", tags=["news"])
+
+async def save_upload_file(image: UploadFile):
+    raise NotImplementedError
 
 @router.post("/", response_model=NewsResponse)
 async def create_news(

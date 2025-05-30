@@ -130,3 +130,34 @@ class CommentResponse(BaseModel):
     video: Optional[VideoResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+# Base schema for News
+class NewsBase(BaseModel):
+    title: str
+    content: str
+
+# Schema for creating news
+class NewsCreate(NewsBase):
+    pass
+
+# Schema for updating news
+class NewsUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+
+# Schema for returning news (response)
+class NewsResponse(NewsBase):
+    id: uuid.UUID
+    image_url: str
+    created_at: datetime
+    updated_at: Optional[datetime]
+    author_id: uuid.UUID
+
+    class Config:
+        orm_mode = True
+        from_attributes = True  # For Pydantic v2 compatibility
+
+# Schema for paginated news list
+class NewsListResponse(BaseModel):
+    items: List[NewsResponse]
+    total: int
