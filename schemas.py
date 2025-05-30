@@ -155,7 +155,7 @@ class NewsResponse(NewsBase):
 
     class Config:
         orm_mode = True
-        from_attributes = True  # For Pydantic v2 compatibility
+        from_attributes = True 
 
 # Schema for paginated news list
 class NewsListResponse(BaseModel):
