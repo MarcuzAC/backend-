@@ -1,36 +1,60 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import uuid
+import os
 from datetime import datetime
+from config import settings
+from supabase import Client
 
 # Import your existing components
 from database import get_db
 from models import News, User
 from schemas import NewsCreate, NewsUpdate, NewsResponse, NewsListResponse
 from auth import get_current_user
-from utils import save_upload_file 
 
 router = APIRouter(prefix="/news", tags=["news"])
 
-async def save_upload_file(image: UploadFile):
-    raise NotImplementedError
+async def save_upload_file(file: UploadFile, supabase: Client) -> str:
+    """Upload file to storage and return URL"""
+    try:
+        # Generate unique filename
+        file_ext = os.path.splitext(file.filename)[1]
+        file_name = f"{uuid.uuid4()}{file_ext}"
+        
+        # Using Supabase Storage
+        contents = await file.read()
+        res = supabase.storage.from_(settings.SUPABASE_BUCKET).upload(
+            file=contents,
+            path=file_name,
+            file_options={"content-type": file.content_type}
+        )
+        
+        # Get public URL
+        url = supabase.storage.from_(settings.SUPABASE_BUCKET).get_public_url(file_name)
+        return url
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload image: {str(e)}"
+        )
 
 @router.post("/", response_model=NewsResponse)
 async def create_news(
     news_data: NewsCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    image: Optional[UploadFile] = File(None)
+    image: Optional[UploadFile] = File(None),
+    supabase: Client = Depends(lambda: settings.supabase)
 ):
-    """
-    Create a new news item (with optional image upload)
-    """
+    """Create a new news article with optional image"""
     try:
         # Handle image upload if provided
         image_url = None
         if image:
-            image_url = await save_upload_file(image)
+            image_url = await save_upload_file(image, supabase)
         
         # Create news item
         db_news = News(
@@ -61,9 +85,7 @@ def get_news_list(
     published_only: bool = True,
     db: Session = Depends(get_db)
 ):
-    """
-    Get paginated list of news items
-    """
+    """Get paginated list of news articles"""
     query = db.query(News)
     
     if published_only:
@@ -87,9 +109,7 @@ def get_news(
     news_id: uuid.UUID,
     db: Session = Depends(get_db)
 ):
-    """
-    Get a single news item by ID
-    """
+    """Get a single news article by ID"""
     news = db.query(News).filter(News.id == news_id).first()
     if not news:
         raise HTTPException(
@@ -104,11 +124,10 @@ async def update_news(
     news_data: NewsUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    image: Optional[UploadFile] = File(None)
+    image: Optional[UploadFile] = File(None),
+    supabase: Client = Depends(lambda: settings.supabase)
 ):
-    """
-    Update a news item (with optional image update)
-    """
+    """Update a news article with optional new image"""
     news = db.query(News).filter(News.id == news_id).first()
     if not news:
         raise HTTPException(
@@ -126,7 +145,7 @@ async def update_news(
     try:
         # Handle image upload if provided
         if image:
-            news.image_url = await save_upload_file(image)
+            news.image_url = await save_upload_file(image, supabase)
         
         # Update other fields
         if news_data.title is not None:
@@ -155,9 +174,7 @@ def delete_news(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Delete a news item
-    """
+    """Delete a news article"""
     news = db.query(News).filter(News.id == news_id).first()
     if not news:
         raise HTTPException(
@@ -178,6 +195,24 @@ def delete_news(
         return {"message": "News deleted successfully"}
     except Exception as e:
         db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.post("/upload-image", response_model=dict)
+async def upload_news_image(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    supabase: Client = Depends(lambda: settings.supabase)
+):
+    """Standalone endpoint for image uploads"""
+    try:
+        image_url = await save_upload_file(file, supabase)
+        return {"url": image_url}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
