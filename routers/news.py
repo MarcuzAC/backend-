@@ -1,29 +1,43 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+import json
+import os
+import uuid
+from datetime import datetime
+from typing import List, Optional
+
+from fastapi import (
+    APIRouter, 
+    Depends, 
+    File, 
+    Form, 
+    HTTPException, 
+    status, 
+    UploadFile,
+    Query
+)
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from typing import List, Optional
-import uuid
-import os
-from datetime import datetime
-from config import settings
 from supabase import Client
 
-# Import your existing components
+from config import settings
 from database import get_db
 from models import News, User
-from schemas import NewsCreate, NewsUpdate, NewsResponse, NewsListResponse
+from schemas import (
+    NewsCreate, 
+    NewsUpdate, 
+    NewsResponse, 
+    NewsListResponse
+)
 from auth import get_current_user
 
 router = APIRouter(prefix="/news", tags=["news"])
 
+# Helper Functions
 async def save_upload_file(file: UploadFile, supabase: Client) -> str:
     """Upload file to storage and return URL"""
     try:
-        # Generate unique filename
         file_ext = os.path.splitext(file.filename)[1]
         file_name = f"{uuid.uuid4()}{file_ext}"
         
-        # Using Supabase Storage
         contents = await file.read()
         res = supabase.storage.from_(settings.SUPABASE_BUCKET).upload(
             file=contents,
@@ -31,7 +45,6 @@ async def save_upload_file(file: UploadFile, supabase: Client) -> str:
             file_options={"content-type": file.content_type}
         )
         
-        # Get public URL
         url = supabase.storage.from_(settings.SUPABASE_BUCKET).get_public_url(file_name)
         return url
         
@@ -41,9 +54,10 @@ async def save_upload_file(file: UploadFile, supabase: Client) -> str:
             detail=f"Failed to upload image: {str(e)}"
         )
 
+# Endpoints
 @router.post("/", response_model=NewsResponse)
 async def create_news(
-    news_data: NewsCreate,
+    news_data: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     image: Optional[UploadFile] = File(None),
@@ -51,12 +65,19 @@ async def create_news(
 ):
     """Create a new news article with optional image"""
     try:
-        # Handle image upload if provided
+        try:
+            news_dict = json.loads(news_data)
+            news_data = NewsCreate(**news_dict)
+        except (json.JSONDecodeError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid news_data format"
+            )
+        
         image_url = None
         if image:
             image_url = await save_upload_file(image, supabase)
         
-        # Create news item
         db_news = News(
             title=news_data.title,
             content=news_data.content,
@@ -68,7 +89,6 @@ async def create_news(
         db.add(db_news)
         db.commit()
         db.refresh(db_news)
-        
         return db_news
         
     except Exception as e:
@@ -80,124 +100,172 @@ async def create_news(
 
 @router.get("/", response_model=NewsListResponse)
 def get_news_list(
-    page: int = 1,
-    size: int = 10,
-    published_only: bool = True,
+    page: int = Query(1, gt=0),
+    size: int = Query(10, gt=0, le=100),
+    published_only: bool = Query(True),
     db: Session = Depends(get_db)
 ):
-    """Get paginated list of news articles"""
-    query = db.query(News)
-    
-    if published_only:
-        query = query.filter(News.is_published == True)
-    
-    total = query.count()
-    items = query.order_by(News.created_at.desc())\
-                 .offset((page - 1) * size)\
-                 .limit(size)\
-                 .all()
-    
-    return NewsListResponse(
-        items=items,
-        total=total,
-        page=page,
-        size=size
-    )
+    """Get paginated list of news items"""
+    try:
+        query = db.query(News)
+        
+        if published_only:
+            query = query.filter(News.is_published == True)
+        
+        total = query.count()
+        items = query.order_by(News.created_at.desc())\
+                     .offset((page - 1) * size)\
+                     .limit(size)\
+                     .all()
+        
+        return NewsListResponse(
+            items=items,
+            total=total,
+            page=page,
+            size=size
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching news list: {str(e)}"
+        )
 
 @router.get("/{news_id}", response_model=NewsResponse)
 def get_news(
     news_id: uuid.UUID,
     db: Session = Depends(get_db)
 ):
-    """Get a single news article by ID"""
-    news = db.query(News).filter(News.id == news_id).first()
-    if not news:
+    """Get a single news item by ID"""
+    try:
+        news = db.query(News).filter(News.id == news_id).first()
+        if not news:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="News item not found"
+            )
+        return news
+        
+    except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="News not found"
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid news ID format"
         )
-    return news
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving news item: {str(e)}"
+        )
 
 @router.put("/{news_id}", response_model=NewsResponse)
 async def update_news(
     news_id: uuid.UUID,
-    news_data: NewsUpdate,
+    news_data: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     image: Optional[UploadFile] = File(None),
     supabase: Client = Depends(lambda: settings.supabase)
 ):
-    """Update a news article with optional new image"""
-    news = db.query(News).filter(News.id == news_id).first()
-    if not news:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="News not found"
-        )
-    
-    # Verify ownership or admin status
-    if news.author_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to update this news"
-        )
-    
+    """Update a news item with optional image update"""
     try:
-        # Handle image upload if provided
+        try:
+            news_update = json.loads(news_data)
+            news_update = NewsUpdate(**news_update)
+        except (json.JSONDecodeError, ValueError) as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Invalid news_data format"
+            )
+
+        news = db.query(News).filter(News.id == news_id).first()
+        if not news:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="News item not found"
+            )
+
+        if news.author_id != current_user.id and not current_user.is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to update this news item"
+            )
+
         if image:
+            if news.image_url:
+                try:
+                    old_filename = news.image_url.split('/')[-1]
+                    supabase.storage.from_(settings.SUPABASE_BUCKET).remove([old_filename])
+                except Exception as e:
+                    print(f"Failed to delete old image: {str(e)}")
+            
             news.image_url = await save_upload_file(image, supabase)
-        
-        # Update other fields
-        if news_data.title is not None:
-            news.title = news_data.title
-        if news_data.content is not None:
-            news.content = news_data.content
-        if news_data.is_published is not None:
-            news.is_published = news_data.is_published
+
+        if news_update.title is not None:
+            news.title = news_update.title
+        if news_update.content is not None:
+            news.content = news_update.content
+        if news_update.is_published is not None:
+            news.is_published = news_update.is_published
         
         news.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(news)
-        
         return news
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            detail=f"Failed to update news item: {str(e)}"
         )
 
-@router.delete("/{news_id}")
+@router.delete("/{news_id}", response_model=str)
 def delete_news(
     news_id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    supabase: Client = Depends(lambda: settings.supabase)
 ):
-    """Delete a news article"""
-    news = db.query(News).filter(News.id == news_id).first()
-    if not news:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="News not found"
-        )
-    
-    # Verify ownership or admin status
-    if news.author_id != current_user.id and not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to delete this news"
-        )
-    
+    """Delete a news item and its associated image"""
     try:
+        news = db.query(News).filter(News.id == news_id).first()
+        if not news:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="News item not found"
+            )
+
+        if news.author_id != current_user.id and not current_user.is_admin:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to delete this news item"
+            )
+
+        if news.image_url:
+            try:
+                filename = news.image_url.split('/')[-1]
+                supabase.storage.from_(settings.SUPABASE_BUCKET).remove([filename])
+            except Exception as e:
+                print(f"Failed to delete image: {str(e)}")
+
         db.delete(news)
         db.commit()
-        return {"message": "News deleted successfully"}
+        return "News item deleted successfully"
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid news ID format"
+        )
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            detail=f"Failed to delete news item: {str(e)}"
         )
 
 @router.post("/upload-image", response_model=dict)
