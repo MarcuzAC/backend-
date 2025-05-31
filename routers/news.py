@@ -9,7 +9,7 @@ from database import get_db
 from models import News, User
 from schemas import NewsCreate, NewsUpdate, NewsResponse, NewsListResponse
 from auth import get_current_user
-# from utils import save_upload_file 
+from utils import save_upload_file 
 
 router = APIRouter(prefix="/news", tags=["news"])
 

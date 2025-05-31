@@ -2,11 +2,11 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from database import engine, Base  # Import Base from database
+from database import engine, Base  
 import models
 from auth import router as auth_router
 from routers import users, videos, categories, likes, comments, news
-import asyncio  # Add this import
+import asyncio
 
 app = FastAPI(
     title="Video API",

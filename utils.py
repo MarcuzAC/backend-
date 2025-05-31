@@ -67,3 +67,11 @@ async def delete_from_supabase(file_url: str) -> bool:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete image: {str(e)}"
         )
+async def save_upload_file(file: UploadFile) -> str:
+    """
+    Saves an uploaded file to Supabase Storage with a unique filename.
+    Returns the public URL of the uploaded file.
+    """
+    file_ext = file.filename.split('.')[-1]
+    unique_filename = f"{uuid.uuid4()}.{file_ext}"
+    return await upload_to_supabase(file, unique_filename)
