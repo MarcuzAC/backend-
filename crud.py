@@ -433,10 +433,12 @@ async def get_dashboard_stats(db: AsyncSession):
     total_users = await db.scalar(select(func.count(models.User.id)))
     total_videos = await db.scalar(select(func.count(models.Video.id)))
     total_categories = await db.scalar(select(func.count(models.Category.id)))
+    total_news = await get_news_count(db, published_only=True)
 
     return {
         "total_users": total_users or 0,
         "total_videos": total_videos or 0,
         "total_categories": total_categories or 0,
+        "total_news": total_news or 0,
         "revenue": 0
     }
