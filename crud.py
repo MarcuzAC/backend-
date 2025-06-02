@@ -1,4 +1,6 @@
-from typing import Optional
+from typing import Optional, List
+from datetime import datetime
+from sqlalchemy import and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import delete, func, update
@@ -6,7 +8,7 @@ import models
 import schemas
 import uuid
 from security import get_password_hash
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 # User Operations
 async def get_all_users_except_me(db: AsyncSession, my_user_id: uuid.UUID, limit: int):
@@ -276,6 +278,155 @@ async def delete_comment(db: AsyncSession, comment_id: uuid.UUID, current_user_i
     await db.delete(comment)
     await db.commit()
     return {"detail": "Comment deleted successfully"}
+
+# News Operations
+async def create_news(
+    db: AsyncSession, 
+    news_data: schemas.NewsCreate, 
+    author_id: uuid.UUID,
+    image_url: Optional[str] = None
+) -> models.News:
+    """Create a new news article"""
+    db_news = models.News(
+        **news_data.dict(exclude={"image"}),
+        image_url=image_url,
+        author_id=author_id
+    )
+    db.add(db_news)
+    await db.commit()
+    await db.refresh(db_news)
+    return db_news
+
+async def get_news_list(
+    db: AsyncSession,
+    skip: int = 0,
+    limit: int = 100,
+    published_only: bool = True,
+    author_id: Optional[uuid.UUID] = None
+) -> List[models.News]:
+    """Get paginated list of news items"""
+    query = select(models.News).options(
+        selectinload(models.News.author)
+    ).order_by(models.News.created_at.desc())
+    
+    if published_only:
+        query = query.where(models.News.is_published == True)
+    if author_id:
+        query = query.where(models.News.author_id == author_id)
+    
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+async def get_news_count(
+    db: AsyncSession,
+    published_only: bool = True
+) -> int:
+    """Get total count of news items"""
+    query = select(func.count(models.News.id))
+    if published_only:
+        query = query.where(models.News.is_published == True)
+    result = await db.scalar(query)
+    return result or 0
+
+async def get_news_by_id(
+    db: AsyncSession, 
+    news_id: uuid.UUID
+) -> Optional[models.News]:
+    """Get a single news item by ID with author details"""
+    result = await db.execute(
+        select(models.News)
+        .options(
+            joinedload(models.News.author)
+        )
+        .where(models.News.id == news_id)
+    )
+    return result.scalars().first()
+
+async def update_news(
+    db: AsyncSession,
+    db_news: models.News,
+    news_update: schemas.NewsUpdate,
+    image_url: Optional[str] = None
+) -> models.News:
+    """Update a news item"""
+    update_data = news_update.dict(exclude_unset=True, exclude={"image"})
+    
+    if image_url is not None:
+        update_data["image_url"] = image_url
+    
+    for field, value in update_data.items():
+        setattr(db_news, field, value)
+    
+    db_news.updated_at = datetime.utcnow()
+    db.add(db_news)
+    await db.commit()
+    await db.refresh(db_news)
+    return db_news
+
+async def delete_news(
+    db: AsyncSession,
+    news: models.News
+) -> None:
+    """Delete a news item"""
+    await db.delete(news)
+    await db.commit()
+
+async def get_recent_news(
+    db: AsyncSession,
+    limit: int = 5
+) -> List[models.News]:
+    """Get most recent news items"""
+    result = await db.execute(
+        select(models.News)
+        .options(
+            joinedload(models.News.author)
+        )
+        .where(models.News.is_published == True)
+        .order_by(models.News.created_at.desc())
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+async def check_news_ownership(
+    db: AsyncSession,
+    news_id: uuid.UUID,
+    user_id: uuid.UUID
+) -> bool:
+    """Check if user is the author of the news item"""
+    result = await db.execute(
+        select(models.News.id)
+        .where(and_(
+            models.News.id == news_id,
+            models.News.author_id == user_id
+        ))
+    )
+    return result.scalar() is not None
+
+async def search_news(
+    db: AsyncSession,
+    query: str,
+    skip: int = 0,
+    limit: int = 10
+) -> List[models.News]:
+    """Search news by title and content"""
+    result = await db.execute(
+        select(models.News)
+        .options(
+            joinedload(models.News.author)
+        )
+        .where(and_(
+            models.News.is_published == True,
+            or_(
+                models.News.title.ilike(f"%{query}%"),
+                models.News.content.ilike(f"%{query}%")
+            )
+        ))
+        .order_by(models.News.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    return result.scalars().all()
 
 # Dashboard Operations
 async def get_dashboard_stats(db: AsyncSession):
