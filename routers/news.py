@@ -267,6 +267,26 @@ def delete_news(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete news item: {str(e)}"
         )
+# Add this new endpoint in news.py
+@router.get("/latest", response_model=List[NewsResponse])
+def get_latest_news(
+    limit: int = Query(5, gt=0, le=20),
+    db: Session = Depends(get_db)
+):
+    """Get latest news articles"""
+    try:
+        items = db.query(News)\
+                 .filter(News.is_published == True)\
+                 .order_by(News.created_at.desc())\
+                 .limit(limit)\
+                 .all()
+        return items
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching latest news: {str(e)}"
+        )
 
 @router.post("/upload-image", response_model=dict)
 async def upload_news_image(
