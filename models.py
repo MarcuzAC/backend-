@@ -77,6 +77,7 @@ class News(Base):
     image_url = Column(String, nullable=False)  # Must have an image
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())
+    is_published = Column(Boolean, default=False)
     author_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     # Relationship

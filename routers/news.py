@@ -15,8 +15,8 @@ from fastapi import (
     Query
 )
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import select, or_, func
+from sqlalchemy.ext.asyncio import AsyncSession
 from supabase import Client
 
 from config import settings
@@ -93,12 +93,15 @@ async def delete_image_from_storage(image_url: str, supabase: Client):
 
 async def get_news_or_404(
     news_id: uuid.UUID, 
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     check_owner: bool = True,
     current_user: User = Depends(get_current_user)
 ) -> News:
     """Dependency to get news item and validate ownership"""
-    news = db.query(News).filter(News.id == news_id).first()
+    stmt = select(News).where(News.id == news_id)
+    result = await db.execute(stmt)
+    news = result.scalar_one_or_none()
+    
     if not news:
         raise HTTPException(status_code=404, detail="News item not found")
     
@@ -111,7 +114,7 @@ async def get_news_or_404(
 @router.post("/", response_model=NewsResponse)
 async def create_news(
     news_data: str = Form(...),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     image: Optional[UploadFile] = File(None),
     supabase: Client = Depends(get_supabase)
@@ -140,36 +143,42 @@ async def create_news(
         )
         
         db.add(db_news)
-        db.commit()
-        db.refresh(db_news)
+        await db.commit()
+        await db.refresh(db_news)
         return db_news
         
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
 
 @router.get("/", response_model=NewsListResponse)
-def get_news_list(
+async def get_news_list(
     page: int = Query(1, gt=0),
     size: int = Query(10, gt=0, le=100),
     published_only: bool = Query(True),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Get paginated list of news items"""
     try:
-        query = db.query(News)
+        stmt = select(News)
         
         if published_only:
-            query = query.filter(News.is_published == True)
+            stmt = stmt.where(News.is_published == True)
         
-        total = query.count()
-        items = query.order_by(News.created_at.desc())\
-                     .offset((page - 1) * size)\
-                     .limit(size)\
-                     .all()
+        # Get total count
+        count_stmt = select(func.count()).select_from(stmt)
+        total_result = await db.execute(count_stmt)
+        total = total_result.scalar_one()
+        
+        # Get paginated results
+        items_stmt = stmt.order_by(News.created_at.desc())\
+                         .offset((page - 1) * size)\
+                         .limit(size)
+        items_result = await db.execute(items_stmt)
+        items = items_result.scalars().all()
         
         return NewsListResponse(
             items=items,
@@ -185,17 +194,17 @@ def get_news_list(
         )
 
 @router.get("/search", response_model=NewsListResponse)
-def search_news(
+async def search_news(
     query: str = Query(..., min_length=1, description="Search term"),
     page: int = Query(1, gt=0),
     size: int = Query(10, gt=0, le=100),
     published_only: bool = Query(True),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Search news articles by title or content"""
     try:
         search = f"%{query}%"
-        db_query = db.query(News).filter(
+        stmt = select(News).where(
             or_(
                 News.title.ilike(search),
                 News.content.ilike(search)
@@ -203,13 +212,19 @@ def search_news(
         )
         
         if published_only:
-            db_query = db_query.filter(News.is_published == True)
+            stmt = stmt.where(News.is_published == True)
         
-        total = db_query.count()
-        items = db_query.order_by(News.created_at.desc())\
+        # Get total count
+        count_stmt = select(func.count()).select_from(stmt)
+        total_result = await db.execute(count_stmt)
+        total = total_result.scalar_one()
+        
+        # Get paginated results
+        items_stmt = stmt.order_by(News.created_at.desc())\
                         .offset((page - 1) * size)\
-                        .limit(size)\
-                        .all()
+                        .limit(size)
+        items_result = await db.execute(items_stmt)
+        items = items_result.scalars().all()
         
         return NewsListResponse(
             items=items,
@@ -225,7 +240,7 @@ def search_news(
         )
 
 @router.get("/{news_id}", response_model=NewsResponse)
-def get_news(
+async def get_news(
     news: News = Depends(get_news_or_404),
 ):
     """Get a single news item by ID"""
@@ -235,7 +250,7 @@ def get_news(
 async def update_news(
     news_update: str = Form(...),
     news: News = Depends(get_news_or_404),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     image: Optional[UploadFile] = File(None),
     supabase: Client = Depends(get_supabase)
 ):
@@ -263,14 +278,14 @@ async def update_news(
             news.is_published = news_update.is_published
         
         news.updated_at = datetime.utcnow()
-        db.commit()
-        db.refresh(news)
+        await db.commit()
+        await db.refresh(news)
         return news
 
     except HTTPException:
         raise
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update news item: {str(e)}"
@@ -279,7 +294,7 @@ async def update_news(
 @router.delete("/{news_id}", response_model=str)
 async def delete_news(
     news: News = Depends(get_news_or_404),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     supabase: Client = Depends(get_supabase)
 ):
     """Delete a news item and its associated image"""
@@ -287,31 +302,33 @@ async def delete_news(
         if news.image_url:
             await delete_image_from_storage(news.image_url, supabase)
 
-        db.delete(news)
-        db.commit()
+        await db.delete(news)
+        await db.commit()
         return "News item deleted successfully"
 
     except HTTPException:
         raise
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete news item: {str(e)}"
         )
 
 @router.get("/latest", response_model=List[NewsResponse])
-def get_latest_news(
+async def get_latest_news(
     limit: int = Query(5, gt=0, le=20),
-    db: Session = Depends(get_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """Get latest news articles"""
     try:
-        items = db.query(News)\
-                 .filter(News.is_published == True)\
-                 .order_by(News.created_at.desc())\
-                 .limit(limit)\
-                 .all()
+        stmt = select(News)\
+               .where(News.is_published == True)\
+               .order_by(News.created_at.desc())\
+               .limit(limit)
+        
+        result = await db.execute(stmt)
+        items = result.scalars().all()
         return items
         
     except Exception as e:
