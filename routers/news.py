@@ -30,7 +30,7 @@ from schemas import (
 )
 from auth import get_current_user
 
-router = APIRouter(tags=["/news"])
+router = APIRouter(tags=["news"])
 
 # Helper Functions
 def get_supabase() -> Client:
