@@ -31,6 +31,7 @@ from auth import get_current_user
 
 router = APIRouter(prefix="/news", tags=["news"])
 
+
 # Helper Functions
 async def save_upload_file(file: UploadFile, supabase: Client) -> str:
     """Upload file to storage and return URL"""
@@ -53,6 +54,7 @@ async def save_upload_file(file: UploadFile, supabase: Client) -> str:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to upload image: {str(e)}"
         )
+
 
 # Endpoints
 @router.post("/", response_model=NewsResponse)
@@ -98,6 +100,7 @@ async def create_news(
             detail=str(e)
         )
 
+
 @router.get("/", response_model=NewsListResponse)
 def get_news_list(
     page: int = Query(1, gt=0),
@@ -131,6 +134,7 @@ def get_news_list(
             detail=f"Error fetching news list: {str(e)}"
         )
 
+
 @router.get("/{news_id}", response_model=NewsResponse)
 def get_news(
     news_id: uuid.UUID,
@@ -156,6 +160,7 @@ def get_news(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error retrieving news item: {str(e)}"
         )
+
 
 @router.put("/{news_id}", response_model=NewsResponse)
 async def update_news(
@@ -221,6 +226,7 @@ async def update_news(
             detail=f"Failed to update news item: {str(e)}"
         )
 
+
 @router.delete("/{news_id}", response_model=str)
 def delete_news(
     news_id: uuid.UUID,
@@ -267,7 +273,8 @@ def delete_news(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete news item: {str(e)}"
         )
-# Add this new endpoint in news.py
+
+
 @router.get("/latest", response_model=List[NewsResponse])
 def get_latest_news(
     limit: int = Query(5, gt=0, le=20),
@@ -287,6 +294,42 @@ def get_latest_news(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching latest news: {str(e)}"
         )
+
+
+@router.get("/search", response_model=NewsListResponse)
+def search_news(
+    query: str = Query(..., min_length=1, description="Search query"),
+    page: int = Query(1, gt=0),
+    size: int = Query(10, gt=0, le=100),
+    published_only: bool = Query(True),
+    db: Session = Depends(get_db)
+):
+    """Search news articles by title or content"""
+    try:
+        q = db.query(News)
+        if published_only:
+            q = q.filter(News.is_published == True)
+        q = q.filter(
+            (News.title.ilike(f"%{query}%")) |
+            (News.content.ilike(f"%{query}%"))
+        )
+        total = q.count()
+        items = q.order_by(News.created_at.desc())\
+                 .offset((page - 1) * size)\
+                 .limit(size)\
+                 .all()
+        return NewsListResponse(
+            items=items,
+            total=total,
+            page=page,
+            size=size
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error searching news: {str(e)}"
+        )
+
 
 @router.post("/upload-image", response_model=dict)
 async def upload_news_image(
