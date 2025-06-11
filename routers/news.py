@@ -57,7 +57,7 @@ async def save_upload_file(file: UploadFile, supabase: Client) -> str:
 
 
 # Endpoints
-@router.post("/", response_model=NewsResponse)
+@router.post("/news", response_model=NewsResponse)
 async def create_news(
     news_data: str = Form(...),
     db: Session = Depends(get_db),
@@ -101,7 +101,7 @@ async def create_news(
         )
 
 
-@router.get("/", response_model=NewsListResponse)
+@router.get("/news", response_model=NewsListResponse)
 def get_news_list(
     page: int = Query(1, gt=0),
     size: int = Query(10, gt=0, le=100),
@@ -135,7 +135,7 @@ def get_news_list(
         )
 
 
-@router.get("/{news_id}", response_model=NewsResponse)
+@router.get("/news/{news_id}", response_model=NewsResponse)
 def get_news(
     news_id: uuid.UUID,
     db: Session = Depends(get_db)
@@ -162,7 +162,7 @@ def get_news(
         )
 
 
-@router.put("/{news_id}", response_model=NewsResponse)
+@router.put("/news/{news_id}", response_model=NewsResponse)
 async def update_news(
     news_id: uuid.UUID,
     news_data: str = Form(...),
@@ -227,7 +227,7 @@ async def update_news(
         )
 
 
-@router.delete("/{news_id}", response_model=str)
+@router.delete("/news/{news_id}", response_model=str)
 def delete_news(
     news_id: uuid.UUID,
     db: Session = Depends(get_db),
@@ -275,7 +275,7 @@ def delete_news(
         )
 
 
-@router.get("/latest", response_model=List[NewsResponse])
+@router.get("/news/latest", response_model=List[NewsResponse])
 def get_latest_news(
     limit: int = Query(5, gt=0, le=20),
     db: Session = Depends(get_db)
@@ -296,7 +296,7 @@ def get_latest_news(
         )
 
 
-@router.get("/search", response_model=NewsListResponse)
+@router.get("/news/search", response_model=NewsListResponse)
 def search_news(
     query: str = Query(..., min_length=1, description="Search query"),
     page: int = Query(1, gt=0),
@@ -331,7 +331,7 @@ def search_news(
         )
 
 
-@router.post("/upload-image", response_model=dict)
+@router.post("/news/upload-image", response_model=dict)
 async def upload_news_image(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
