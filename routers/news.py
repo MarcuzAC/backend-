@@ -29,7 +29,7 @@ from schemas import (
 )
 from auth import get_current_user
 
-router = APIRouter(prefix="/news", tags=["news"])
+router = APIRouter(tags=["news"])
 
 
 # Helper Functions
