@@ -18,7 +18,7 @@ from auth import get_current_user
 import models
 import schemas
 import crud
-from models import User, Video, Category, Like, Comment
+from models import User, Video, Category, Like, Comment, News
 from vimeo_client import upload_to_vimeo, client
 
 router = APIRouter(prefix="/videos", tags=["videos"])
@@ -33,7 +33,7 @@ async def create_video(
     db: AsyncSession = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user)
 ):
-    # Verify user is admin
+    """Create a new video entry with optional thumbnail"""
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -143,25 +143,126 @@ async def create_video(
             except Exception as e:
                 print(f"Failed to delete thumbnail temp file: {str(e)}")
 
-# Get dashboard stats
+# Get comprehensive dashboard stats
 @router.get("/dashboard/stats")
-async def get_dashboard_stats(db: AsyncSession = Depends(get_db)):
-    total_users = await db.scalar(func.count(User.id))
-    total_videos = await db.scalar(func.count(Video.id))
-    total_categories = await db.scalar(func.count(Category.id))
+async def get_dashboard_stats(
+    db: AsyncSession = Depends(get_db),
+    current_user: schemas.UserResponse = Depends(get_current_user)
+):
+    """Get comprehensive dashboard statistics including:
+    - Total counts (users, videos, categories, news)
+    - User growth over last 6 months
+    - Video distribution by category
+    - Recent videos
+    """
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin users can view dashboard stats"
+        )
 
-    return {
-        "total_users": total_users or 0,
-        "total_videos": total_videos or 0,
-        "total_categories": total_categories or 0,
-        "revenue": 0
-    }
+    try:
+        # Get basic counts
+        total_users = await db.scalar(select(func.count(User.id)))
+        total_videos = await db.scalar(select(func.count(Video.id)))
+        total_categories = await db.scalar(select(func.count(Category.id)))
+        total_news = await db.scalar(select(func.count(News.id)))
+        
+        # Get user growth data (last 6 months)
+        six_months_ago = datetime.datetime.utcnow() - datetime.timedelta(days=180)
+        try:
+            user_growth = await db.execute(
+                select(
+                    func.date_trunc('month', User.created_at).label('month'),
+                    func.count(User.id).label('count')
+                )
+                .filter(User.created_at >= six_months_ago)
+                .group_by(func.date_trunc('month', User.created_at))
+            )
+            user_growth_data = user_growth.all()
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to get user growth data: {str(e)}"
+            )
+        
+        # Get video categories distribution
+        video_categories = await db.execute(
+            select(
+                Category.name,
+                func.count(Video.id).label('count')
+            )
+            .join(Video, Category.id == Video.category_id, isouter=True)
+            .group_by(Category.name))
+        video_categories_data = video_categories.all()
+        
+        # Get recent videos (last 5)
+        recent_videos = await db.execute(
+            select(Video)
+            .order_by(Video.created_date.desc())
+            .limit(5)
+        )
+        recent_videos_data = recent_videos.scalars().all()
+        
+        return {
+            "total_users": total_users or 0,
+            "total_videos": total_videos or 0,
+            "total_categories": total_categories or 0,
+            "total_news": total_news or 0,
+            "total_revenue": 0,  # Placeholder - implement your revenue logic
+            "user_growth": {
+                "months": [month.strftime("%b %Y") for month, count in user_growth_data],
+                "counts": [count for month, count in user_growth_data]
+            },
+            "video_categories": {
+                "names": [name for name, count in video_categories_data],
+                "counts": [count for name, count in video_categories_data]
+            },
+            "recent_videos": [
+                {
+                    "id": video.id,
+                    "title": video.title,
+                    "created_date": video.created_date,
+                    "category": video.category.name if video.category else None,
+                    "thumbnail_url": video.thumbnail_url
+                }
+                for video in recent_videos_data
+            ]
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load dashboard stats: {str(e)}"
+        )
 
 # Get recent videos
 @router.get("/recent", response_model=List[schemas.VideoResponse])
-async def get_recent_videos(db: AsyncSession = Depends(get_db)):
-    videos = await crud.get_recent_videos(db)
-    return videos
+async def get_recent_videos(
+    limit: int = Query(5, description="Number of recent videos to fetch"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get most recently added videos"""
+    result = await db.execute(
+        select(Video)
+        .options(joinedload(Video.category))
+        .order_by(Video.created_date.desc())
+        .limit(limit)
+    )
+    videos = result.scalars().all()
+    
+    return [
+        schemas.VideoResponse(
+            id=video.id,
+            title=video.title,
+            created_date=video.created_date,
+            vimeo_url=video.vimeo_url,
+            vimeo_id=video.vimeo_id,
+            category=video.category.name if video.category else None,
+            thumbnail_url=video.thumbnail_url
+        )
+        for video in videos
+    ]
 
 # Update a video
 @router.put("/{video_id}", response_model=schemas.VideoResponse)
@@ -172,7 +273,7 @@ async def update_video(
     db: AsyncSession = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user)
 ):
-    # Verify user is admin
+    """Update video details and/or thumbnail"""
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -248,7 +349,7 @@ async def delete_video(
     db: AsyncSession = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user)
 ):
-    # Verify user is admin
+    """Delete a video and its associated resources"""
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -307,10 +408,7 @@ async def search_videos(
     limit: int = Query(100, ge=1, le=1000, description="Pagination limit"),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Search videos by title with optional category filtering.
-    Returns paginated results of videos matching the search query.
-    """
+    """Search videos by title with optional category filtering"""
     try:
         stmt = (
             select(Video)
@@ -345,7 +443,6 @@ async def search_videos(
             detail=f"Search failed: {str(e)}"
         )
 
-
 # Get all videos
 @router.get("/", response_model=List[schemas.VideoResponse])
 async def read_videos(
@@ -354,6 +451,7 @@ async def read_videos(
     category_id: Optional[uuid.UUID] = None,
     db: AsyncSession = Depends(get_db)
 ):
+    """Get paginated list of all videos with optional category filter"""
     videos = await crud.get_all_videos(db, skip=skip, limit=limit, category_id=category_id)
     return videos
 
@@ -363,6 +461,7 @@ async def read_video(
     video_id: uuid.UUID,
     db: AsyncSession = Depends(get_db)
 ):
+    """Get video details by ID including like and comment counts"""
     result = await db.execute(
         select(Video)
         .options(joinedload(Video.category), joinedload(Video.likes), joinedload(Video.comments))
@@ -392,6 +491,7 @@ async def share_video(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
+    """Generate shareable HTML page for a video"""
     result = await db.execute(
         select(Video).filter(Video.id == video_id)
     )

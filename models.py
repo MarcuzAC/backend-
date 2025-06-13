@@ -1,6 +1,6 @@
 import uuid
 import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, UniqueConstraint
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, UniqueConstraint, Float
 from sqlalchemy.dialects.postgresql import UUID
 from database import Base
 from sqlalchemy.orm import relationship
@@ -19,10 +19,12 @@ class User(Base):
     hashed_password = Column(String)
     reset_token = Column(String, nullable=True)
     avatar_url = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), index=True)  # Added for user growth tracking
 
     # Relationships
     likes = relationship("Like", back_populates="user", cascade="all, delete-orphan")
     comments = relationship("Comment", back_populates="user", cascade="all, delete-orphan")
+    news = relationship("News", back_populates="author")
 
 class Category(Base):
     __tablename__ = "categories"
@@ -38,7 +40,7 @@ class Video(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(String(100), nullable=False)
     thumbnail_url = Column(String)
-    created_date = Column(DateTime, default=datetime.datetime.utcnow)
+    created_date = Column(DateTime, server_default=func.now(), index=True)  # Changed to server_default
     category_id = Column(UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
     vimeo_url = Column(String)
     vimeo_id = Column(String)
@@ -55,7 +57,7 @@ class Like(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     video_id = Column(UUID(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, server_default=func.now())
 
     # Relationships
     user = relationship("User", back_populates="likes")
@@ -66,22 +68,20 @@ class Like(Base):
         UniqueConstraint('user_id', 'video_id', name='unique_user_video_like'),
     )
 
-    # Add this to your models file (where User, Video, etc. are defined)
-
 class News(Base):
     __tablename__ = "news"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(String(200), nullable=False)
-    content = Column(Text, nullable=False)  # Unlimited words
-    image_url = Column(String, nullable=False)  # Must have an image
-    created_at = Column(DateTime, server_default=func.now())
+    content = Column(Text, nullable=False)
+    image_url = Column(String, nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), index=True)
     updated_at = Column(DateTime, onupdate=func.now())
     is_published = Column(Boolean, default=False)
     author_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     # Relationship
-    author = relationship("User")
+    author = relationship("User", back_populates="news")
 
 class Comment(Base):
     __tablename__ = "comments"
@@ -97,5 +97,11 @@ class Comment(Base):
     user = relationship("User", back_populates="comments")
     video = relationship("Video", back_populates="comments")
 
-    def __repr__(self):
-        return f"<Comment(id={self.id}, user_id={self.user_id}, video_id={self.video_id})>"
+class Revenue(Base):
+    __tablename__ = "revenue"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    amount = Column(Float, nullable=False)  # Changed from db.Float to Float
+    date = Column(DateTime, server_default=func.now(), index=True)
+    source = Column(String(50))  # e.g., "subscription", "advertisement", "sponsorship"
+    description = Column(String(200))
