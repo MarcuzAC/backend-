@@ -25,7 +25,7 @@ from schemas import (
 )
 from auth import get_current_user
 
-router = APIRouter(prefix="/news", tags=["news"])
+router = APIRouter(prefix="", tags=["news"])
 
 @router.post("/", response_model=NewsResponse)
 async def create_news(
