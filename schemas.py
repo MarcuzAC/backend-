@@ -50,6 +50,31 @@ class UserResponse(UserBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+class CategoryBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+
+class CategoryCreate(CategoryBase):
+    pass
+
+class CategoryOut(CategoryBase):
+    id: uuid.UUID
+    created_at: datetime
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class CategoryWithVideoCount(CategoryOut):
+    video_count: int
+    
+    model_config = ConfigDict(from_attributes=True)
+
+class CategoryResponse(CategoryBase):
+    id: uuid.UUID
+    video_count: int = 0
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
 class VideoBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
     category_id: uuid.UUID
@@ -71,20 +96,6 @@ class VideoResponse(VideoBase):
     thumbnail_url: Optional[str] = Field(None, max_length=255)
     like_count: int = 0
     comment_count: int = 0
-
-    model_config = ConfigDict(from_attributes=True)
-
-class CategoryBase(BaseModel):
-    name: str = Field(..., min_length=1, max_length=100)
-
-class CategoryCreate(CategoryBase):
-    pass
-
-class CategoryResponse(CategoryBase):
-    id: uuid.UUID
-    video_count: int = 0
-    created_at: datetime
-    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -131,36 +142,33 @@ class CommentResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-# Base schema for News
 class NewsBase(BaseModel):
     title: str
     content: str
 
-# Schema for creating news
 class NewsCreate(NewsBase):
     pass
 
-# Schema for updating news
 class NewsUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
 
-# Schema for returning news (response)
 class NewsResponse(NewsBase):
     id: uuid.UUID
     image_url: str
     created_at: datetime
     updated_at: Optional[datetime]
     author_id: uuid.UUID
+    is_published: bool
 
-    class Config:
-        orm_mode = True
-        from_attributes = True 
+    model_config = ConfigDict(from_attributes=True)
 
-# Schema for paginated news list
 class NewsListResponse(BaseModel):
     items: List[NewsResponse]
     total: int
+    page: int
+    size: int
+
 class UserGrowthData(BaseModel):
     month: str
     count: int

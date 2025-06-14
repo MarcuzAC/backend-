@@ -469,6 +469,53 @@ async def search_news(
         .limit(limit)
     )
     return result.scalars().all()
+async def get_videos_per_category(db: AsyncSession) -> List[Dict[str, Any]]:
+    """
+    Get video counts for all categories.
+    Returns list of dictionaries containing category details and video counts.
+    """
+    result = await db.execute(
+        select(
+            models.Category,
+            func.count(models.Video.id).label("video_count")
+        )
+        .join(models.Video, models.Video.category_id == models.Category.id, isouter=True)
+        .group_by(models.Category.id)
+        .order_by(models.Category.name)
+    )
+    
+    return [
+        {
+            "category": category,
+            "video_count": video_count
+        }
+        for category, video_count in result.all()
+    ]
+
+async def get_category_video_count(db: AsyncSession, category_id: uuid.UUID) -> Optional[Dict[str, Any]]:
+    """
+    Get video count for a specific category.
+    Returns dictionary with category details and video count.
+    """
+    result = await db.execute(
+        select(
+            models.Category,
+            func.count(models.Video.id).label("video_count")
+        )
+        .join(models.Video, models.Video.category_id == models.Category.id, isouter=True)
+        .where(models.Category.id == category_id)
+        .group_by(models.Category.id)
+    )
+    
+    row = result.first()
+    if not row:
+        return None
+    
+    category, video_count = row
+    return {
+        "category": category,
+        "video_count": video_count
+    }
 
 # Enhanced Dashboard Operations
 async def get_dashboard_stats(db: AsyncSession) -> Dict[str, Any]:
