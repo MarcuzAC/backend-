@@ -1,24 +1,18 @@
 import json
-import os
-import uuid
 from datetime import datetime
 from typing import List, Optional
+import uuid
 
 from fastapi import (
     APIRouter, 
     Depends, 
-    File, 
-    Form, 
     HTTPException, 
     Query,
     status,
-    UploadFile
 )
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from sqlalchemy.orm import joinedload
-from supabase import Client
 
 from config import settings
 from database import get_db
@@ -33,84 +27,18 @@ from auth import get_current_user
 
 router = APIRouter(prefix="/news", tags=["news"])
 
-# Constants
-SUPPORTED_IMAGE_TYPES = {
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/gif": ".gif"
-}
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-
-# Helper Functions
-async def save_upload_file(file: UploadFile, supabase: Client) -> str:
-    """Upload file to storage and return URL"""
-    try:
-        # Validate file size
-        file.file.seek(0, 2)  # Seek to end
-        file_size = file.file.tell()
-        file.file.seek(0)  # Reset pointer
-        if file_size > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"File too large. Max size is {MAX_FILE_SIZE/1024/1024}MB"
-            )
-
-        # Validate content type
-        if file.content_type not in SUPPORTED_IMAGE_TYPES:
-            raise HTTPException(
-                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail=f"Unsupported file type. Allowed: {', '.join(SUPPORTED_IMAGE_TYPES.keys())}"
-            )
-
-        file_ext = SUPPORTED_IMAGE_TYPES[file.content_type]
-        file_name = f"{uuid.uuid4()}{file_ext}"
-        
-        contents = await file.read()
-        res = supabase.storage.from_(settings.SUPABASE_BUCKET).upload(
-            file=contents,
-            path=file_name,
-            file_options={"content-type": file.content_type}
-        )
-        
-        url = supabase.storage.from_(settings.SUPABASE_BUCKET).get_public_url(file_name)
-        return url
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload image: {str(e)}"
-        )
-
-# Endpoints
 @router.post("/", response_model=NewsResponse)
 async def create_news(
-    news_data: str = Form(...),
+    news_data: NewsCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    image: Optional[UploadFile] = File(None),
-    supabase: Client = Depends(lambda: settings.supabase)
 ):
-    """Create a new news article with optional image"""
+    """Create a new news article"""
     try:
-        try:
-            news_dict = json.loads(news_data)
-            news_data = NewsCreate(**news_dict)
-        except (json.JSONDecodeError, ValueError) as e:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Invalid news_data format"
-            )
-        
-        image_url = None
-        if image:
-            image_url = await save_upload_file(image, supabase)
-        
         db_news = News(
             title=news_data.title,
             content=news_data.content,
-            image_url=image_url,
+            image_url=news_data.image_url,
             is_published=news_data.is_published,
             author_id=current_user.id,
             created_at=datetime.utcnow()
@@ -121,8 +49,6 @@ async def create_news(
         await db.refresh(db_news)
         return db_news
         
-    except HTTPException:
-        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(
@@ -205,23 +131,12 @@ async def get_news(
 @router.put("/{news_id}", response_model=NewsResponse)
 async def update_news(
     news_id: uuid.UUID,
-    news_data: str = Form(...),
+    news_data: NewsUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    image: Optional[UploadFile] = File(None),
-    supabase: Client = Depends(lambda: settings.supabase)
 ):
-    """Update a news item with optional image update"""
+    """Update a news item"""
     try:
-        try:
-            news_dict = json.loads(news_data)
-            news_update = NewsUpdate(**news_dict)
-        except (json.JSONDecodeError, ValueError) as e:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Invalid news_data format"
-            )
-
         result = await db.execute(
             select(News).where(News.id == news_id)
         )
@@ -239,22 +154,14 @@ async def update_news(
                 detail="Not authorized to update this news item"
             )
 
-        if image:
-            if news.image_url:
-                try:
-                    old_filename = news.image_url.split('/')[-1]
-                    supabase.storage.from_(settings.SUPABASE_BUCKET).remove([old_filename])
-                except Exception as e:
-                    print(f"Failed to delete old image: {str(e)}")
-            
-            news.image_url = await save_upload_file(image, supabase)
-
-        if news_update.title is not None:
-            news.title = news_update.title
-        if news_update.content is not None:
-            news.content = news_update.content
-        if news_update.is_published is not None:
-            news.is_published = news_update.is_published
+        if news_data.title is not None:
+            news.title = news_data.title
+        if news_data.content is not None:
+            news.content = news_data.content
+        if news_data.image_url is not None:
+            news.image_url = news_data.image_url
+        if news_data.is_published is not None:
+            news.is_published = news_data.is_published
         
         news.updated_at = datetime.utcnow()
         await db.commit()
@@ -275,9 +182,8 @@ async def delete_news(
     news_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    supabase: Client = Depends(lambda: settings.supabase)
 ):
-    """Delete a news item and its associated image"""
+    """Delete a news item"""
     try:
         result = await db.execute(
             select(News).where(News.id == news_id)
@@ -295,13 +201,6 @@ async def delete_news(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not authorized to delete this news item"
             )
-
-        if news.image_url:
-            try:
-                filename = news.image_url.split('/')[-1]
-                supabase.storage.from_(settings.SUPABASE_BUCKET).remove([filename])
-            except Exception as e:
-                print(f"Failed to delete image: {str(e)}")
 
         await db.delete(news)
         await db.commit()
@@ -386,22 +285,4 @@ async def search_news(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error searching news: {str(e)}"
-        )
-
-@router.post("/upload-image/", response_model=dict)
-async def upload_news_image(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user),
-    supabase: Client = Depends(lambda: settings.supabase)
-):
-    """Standalone endpoint for image uploads"""
-    try:
-        image_url = await save_upload_file(file, supabase)
-        return {"url": image_url}
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
         )
