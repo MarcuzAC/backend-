@@ -28,7 +28,7 @@ from schemas import (
 from auth import get_current_user
 from utils import upload_news_image
 
-router = APIRouter(tags=["news"])
+router = APIRouter(prefix="", tags=["news"])
 
 @router.post("/", response_model=NewsResponse)
 async def create_news(
