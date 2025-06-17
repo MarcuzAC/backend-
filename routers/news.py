@@ -8,6 +8,8 @@ from fastapi import (
     Depends, 
     HTTPException, 
     Query,
+    UploadFile,
+    File,
     status,
 )
 from fastapi.responses import JSONResponse
@@ -24,6 +26,7 @@ from schemas import (
     NewsListResponse
 )
 from auth import get_current_user
+from utils import upload_news_image
 
 router = APIRouter(prefix="", tags=["news"])
 
@@ -243,6 +246,23 @@ async def get_latest_news(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching latest news: {str(e)}"
+        )
+# Add to your news.py router
+@router.post("/upload-news-image")
+async def upload_news_image_endpoint(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    """Endpoint for uploading news images"""
+    try:
+        image_url = await upload_news_image(file)
+        return {"url": image_url}
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process image upload: {str(e)}"
         )
 
 @router.get("/search/", response_model=NewsListResponse)
