@@ -1,3 +1,4 @@
+# utils.py
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
 import aiosmtplib
@@ -8,6 +9,7 @@ from fastapi import HTTPException, status
 from config import supabase, settings
 from typing import Optional
 from fastapi import UploadFile
+from pathlib import Path
 
 # JWT Configuration
 SECRET_KEY = "your-secret-key"  
@@ -41,37 +43,54 @@ async def send_reset_email(email: str, token: str):
         use_tls=True,
     )
 
-
-async def upload_to_supabase(file: UploadFile, file_name: str) -> str:
+async def upload_to_supabase(file: UploadFile, file_path: str) -> str:
+    """Upload file to Supabase storage"""
     try:
         contents = await file.read()
         res = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).upload(
             file=contents,
-            path=file_name,
+            path=file_path,
             file_options={"content-type": file.content_type}
         )
-        return supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).get_public_url(file_name)
+        return supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).get_public_url(file_path)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload image: {str(e)}"
+            detail=f"Failed to upload file: {str(e)}"
         )
 
-async def delete_from_supabase(file_url: str) -> bool:
+async def delete_from_supabase(file_path: str) -> bool:
+    """Delete file from Supabase storage"""
     try:
-        file_name = file_url.split('/')[-1].split('?')[0]
-        res = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).remove([file_name])
+        res = supabase.storage.from_(settings.SUPABASE_STORAGE_BUCKET).remove([file_path])
         return True
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete image: {str(e)}"
+            detail=f"Failed to delete file: {str(e)}"
         )
-async def save_upload_file(file: UploadFile) -> str:
-    """
-    Saves an uploaded file to Supabase Storage with a unique filename.
-    Returns the public URL of the uploaded file.
-    """
-    file_ext = file.filename.split('.')[-1]
-    unique_filename = f"{uuid.uuid4()}.{file_ext}"
-    return await upload_to_supabase(file, unique_filename)
+
+async def upload_news_image(file: UploadFile) -> str:
+    """Upload news image with organized path structure"""
+    if not file.content_type.startswith('image/'):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only image files are allowed"
+        )
+
+    file_ext = Path(file.filename).suffix.lower()
+    date_path = datetime.now().strftime("%Y/%m/%d")
+    file_path = f"news/{date_path}/{uuid.uuid4()}{file_ext}"
+    return await upload_to_supabase(file, file_path)
+
+async def delete_news_image(image_url: str) -> bool:
+    """Delete news image from Supabase"""
+    if not image_url:
+        return True
+        
+    base_path = f"{supabase.storage_url}/object/public/{settings.SUPABASE_STORAGE_BUCKET}/"
+    if not image_url.startswith(base_path):
+        raise ValueError("Invalid image URL format")
+        
+    file_path = image_url[len(base_path):].split('?')[0]
+    return await delete_from_supabase(file_path)
