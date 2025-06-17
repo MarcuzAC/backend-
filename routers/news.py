@@ -1,35 +1,38 @@
-import json
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 import uuid
 
 from fastapi import (
-    APIRouter, 
-    Depends, 
-    HTTPException, 
-    Query,
-    UploadFile,
-    File,
-    status,
+    APIRouter, Depends, HTTPException, Query,
+    UploadFile, File, status
 )
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 
 from config import settings
 from database import get_db
 from models import News, User
-from schemas import (
-    NewsCreate, 
-    NewsUpdate, 
-    NewsResponse, 
-    NewsListResponse
-)
+from schemas import NewsCreate, NewsUpdate, NewsResponse, NewsListResponse
 from auth import get_current_user
 from utils import upload_news_image
 
-router = APIRouter(prefix="", tags=["news"])
+router = APIRouter(prefix="/news", tags=["news"])
 
+# ─────────────────────────────
+# Utility
+# ─────────────────────────────
+async def get_news_by_id(news_id: uuid.UUID, db: AsyncSession) -> News:
+    result = await db.execute(select(News).where(News.id == news_id))
+    news = result.scalars().first()
+    if not news:
+        raise HTTPException(status_code=404, detail="News item not found")
+    return news
+
+
+# ─────────────────────────────
+# Create News
+# ─────────────────────────────
 @router.post("/", response_model=NewsResponse)
 async def create_news(
     news_data: NewsCreate,
@@ -37,28 +40,23 @@ async def create_news(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new news article"""
-    try:
-        db_news = News(
-            title=news_data.title,
-            content=news_data.content,
-            image_url=news_data.image_url,
-            is_published=news_data.is_published,
-            author_id=current_user.id,
-            created_at=datetime.utcnow()
-        )
-        
-        db.add(db_news)
-        await db.commit()
-        await db.refresh(db_news)
-        return db_news
-        
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create news: {str(e)}"
-        )
+    db_news = News(
+        title=news_data.title,
+        content=news_data.content,
+        image_url=news_data.image_url,
+        is_published=news_data.is_published,
+        author_id=current_user.id,
+        created_at=datetime.utcnow()
+    )
+    db.add(db_news)
+    await db.commit()
+    await db.refresh(db_news)
+    return db_news
 
+
+# ─────────────────────────────
+# Get Paginated News List
+# ─────────────────────────────
 @router.get("/", response_model=NewsListResponse)
 async def get_news_list(
     page: int = Query(1, gt=0),
@@ -67,70 +65,34 @@ async def get_news_list(
     db: AsyncSession = Depends(get_db)
 ):
     """Get paginated list of news items"""
-    try:
-        query = select(News)
-        
-        if published_only:
-            query = query.where(News.is_published == True)
-        
-        # Get total count
-        total_query = select(func.count()).select_from(query.subquery())
-        total_result = await db.execute(total_query)
-        total = total_result.scalar_one()
-        
-        # Get paginated items
-        items_query = query.order_by(News.created_at.desc())\
-                          .offset((page - 1) * size)\
-                          .limit(size)
-        items_result = await db.execute(items_query)
-        items = items_result.scalars().all()
-        
-        return NewsListResponse(
-            items=items,
-            total=total,
-            page=page,
-            size=size
-        )
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching news list: {str(e)}"
-        )
+    query = select(News)
+    if published_only:
+        query = query.where(News.is_published == True)
 
+    total_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(total_query)).scalar_one()
+
+    items_query = query.order_by(News.created_at.desc()).offset((page - 1) * size).limit(size)
+    items = (await db.execute(items_query)).scalars().all()
+
+    return NewsListResponse(items=items, total=total, page=page, size=size)
+
+
+# ─────────────────────────────
+# Get Single News by ID
+# ─────────────────────────────
 @router.get("/{news_id}", response_model=NewsResponse)
 async def get_news(
     news_id: uuid.UUID,
     db: AsyncSession = Depends(get_db)
 ):
     """Get a single news item by ID"""
-    try:
-        result = await db.execute(
-            select(News).where(News.id == news_id)
-        )
-        news = result.scalars().first()
-        
-        if not news:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="News item not found"
-            )
-            
-        return news
-        
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Invalid news ID format"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error retrieving news item: {str(e)}"
-        )
+    return await get_news_by_id(news_id, db)
 
+
+# ─────────────────────────────
+# Update News
+# ─────────────────────────────
 @router.put("/{news_id}", response_model=NewsResponse)
 async def update_news(
     news_id: uuid.UUID,
@@ -139,170 +101,98 @@ async def update_news(
     current_user: User = Depends(get_current_user),
 ):
     """Update a news item"""
-    try:
-        result = await db.execute(
-            select(News).where(News.id == news_id)
-        )
-        news = result.scalars().first()
-        
-        if not news:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="News item not found"
-            )
+    news = await get_news_by_id(news_id, db)
 
-        if news.author_id != current_user.id and not current_user.is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to update this news item"
-            )
+    if news.author_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized to update this news item")
 
-        if news_data.title is not None:
-            news.title = news_data.title
-        if news_data.content is not None:
-            news.content = news_data.content
-        if news_data.image_url is not None:
-            news.image_url = news_data.image_url
-        if news_data.is_published is not None:
-            news.is_published = news_data.is_published
-        
-        news.updated_at = datetime.utcnow()
-        await db.commit()
-        await db.refresh(news)
-        return news
+    for field, value in news_data.dict(exclude_unset=True).items():
+        setattr(news, field, value)
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update news item: {str(e)}"
-        )
+    news.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(news)
+    return news
 
-@router.delete("/{news_id}")
+
+# ─────────────────────────────
+# Delete News
+# ─────────────────────────────
+@router.delete("/{news_id}", status_code=204)
 async def delete_news(
     news_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Delete a news item"""
-    try:
-        result = await db.execute(
-            select(News).where(News.id == news_id)
-        )
-        news = result.scalars().first()
-        
-        if not news:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="News item not found"
-            )
+    news = await get_news_by_id(news_id, db)
 
-        if news.author_id != current_user.id and not current_user.is_admin:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not authorized to delete this news item"
-            )
+    if news.author_id != current_user.id and not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this news item")
 
-        await db.delete(news)
-        await db.commit()
-        return JSONResponse(
-            status_code=status.HTTP_204_NO_CONTENT,
-            content=None
-        )
+    await db.delete(news)
+    await db.commit()
+    return JSONResponse(status_code=status.HTTP_204_NO_CONTENT, content=None)
 
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Invalid news ID format"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete news item: {str(e)}"
-        )
 
+# ─────────────────────────────
+# Get Latest News
+# ─────────────────────────────
 @router.get("/latest/", response_model=List[NewsResponse])
 async def get_latest_news(
     limit: int = Query(5, gt=0, le=20),
     db: AsyncSession = Depends(get_db)
 ):
     """Get latest news articles"""
-    try:
-        result = await db.execute(
-            select(News)
-            .where(News.is_published == True)
-            .order_by(News.created_at.desc())
-            .limit(limit)
-        )
-        items = result.scalars().all()
-        return items
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error fetching latest news: {str(e)}"
-        )
-# Add to your news.py router
-@router.post("/upload-news-image")
+    result = await db.execute(
+        select(News)
+        .where(News.is_published == True)
+        .order_by(News.created_at.desc())
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
+# ─────────────────────────────
+# Upload News Image
+# ─────────────────────────────
+@router.post("/upload-image/")
 async def upload_news_image_endpoint(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
-    """Endpoint for uploading news images"""
-    try:
-        image_url = await upload_news_image(file)
-        return {"url": image_url}
-    except HTTPException as he:
-        raise he
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process image upload: {str(e)}"
-        )
+    """Upload an image for a news article"""
+    image_url = await upload_news_image(file)
+    return {"url": image_url}
 
+
+# ─────────────────────────────
+# Search News
+# ─────────────────────────────
 @router.get("/search/", response_model=NewsListResponse)
 async def search_news(
-    query: str = Query(..., min_length=1, description="Search query"),
+    query: str = Query(..., min_length=1),
     page: int = Query(1, gt=0),
     size: int = Query(10, gt=0, le=100),
     published_only: bool = Query(True),
     db: AsyncSession = Depends(get_db)
 ):
     """Search news articles by title or content"""
-    try:
-        q = select(News)
-        if published_only:
-            q = q.where(News.is_published == True)
-        q = q.where(
-            (News.title.ilike(f"%{query}%")) |
-            (News.content.ilike(f"%{query}%"))
+    q = select(News)
+    if published_only:
+        q = q.where(News.is_published == True)
+
+    q = q.where(
+        or_(
+            News.title.ilike(f"%{query}%"),
+            News.content.ilike(f"%{query}%")
         )
-        
-        # Get total count
-        total_query = select(func.count()).select_from(q.subquery())
-        total_result = await db.execute(total_query)
-        total = total_result.scalar_one()
-        
-        # Get paginated items
-        items_query = q.order_by(News.created_at.desc())\
-                      .offset((page - 1) * size)\
-                      .limit(size)
-        items_result = await db.execute(items_query)
-        items = items_result.scalars().all()
-        
-        return NewsListResponse(
-            items=items,
-            total=total,
-            page=page,
-            size=size
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error searching news: {str(e)}"
-        )
+    )
+
+    total_query = select(func.count()).select_from(q.subquery())
+    total = (await db.execute(total_query)).scalar_one()
+
+    items_query = q.order_by(News.created_at.desc()).offset((page - 1) * size).limit(size)
+    items = (await db.execute(items_query)).scalars().all()
+
+    return NewsListResponse(items=items, total=total, page=page, size=size)
