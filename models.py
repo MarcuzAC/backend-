@@ -1,6 +1,6 @@
 import uuid
 import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, UniqueConstraint, Float
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, UniqueConstraint, Float
 from sqlalchemy.dialects.postgresql import UUID
 from database import Base
 from sqlalchemy.orm import relationship
@@ -19,12 +19,20 @@ class User(Base):
     hashed_password = Column(String)
     reset_token = Column(String, nullable=True)
     avatar_url = Column(String, nullable=True)
-    created_at = Column(DateTime, server_default=func.now(), index=True)  # Added for user growth tracking
+    created_at = Column(DateTime, server_default=func.now(), index=True)
+    is_subscribed = Column(Boolean, default=False)
+    subscription_expiry = Column(DateTime, nullable=True)  # Nullable to allow non-s
 
     # Relationships
     likes = relationship("Like", back_populates="user", cascade="all, delete-orphan")
     comments = relationship("Comment", back_populates="user", cascade="all, delete-orphan")
     news = relationship("News", back_populates="author")
+
+    def is_subscription_active(self):
+        """Check if the user's subscription is active."""
+        if not self.is_subscribed or not self.subscription_expiry:
+            return False
+        return self.subscription_expiry > datetime.datetime.utcnow()
 
 class Category(Base):
     __tablename__ = "categories"
@@ -105,3 +113,19 @@ class Revenue(Base):
     date = Column(DateTime, server_default=func.now(), index=True)
     source = Column(String(50))  # e.g., "subscription", "advertisement", "sponsorship"
     description = Column(String(200))
+# Add this to your models.py
+class SubscriptionPlan(Base):
+    __tablename__ = "subscription_plans"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(100), nullable=False)
+    description = Column(Text)
+    price = Column(Float, nullable=False)
+    currency = Column(String(3), default="MWK")
+    duration_days = Column(Integer, nullable=False)  # Duration in days
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, onupdate=func.now())
+
+    # Relationship to track which users have this plan (optional)
+    # subscriptions = relationship("UserSubscription", back_populates="plan")

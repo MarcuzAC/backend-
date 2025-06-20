@@ -14,7 +14,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import joinedload
 
 from database import get_db
-from auth import get_current_user
+from auth import get_current_user, get_current_subscribed_user
 import models
 import schemas
 import crud
@@ -33,7 +33,7 @@ async def create_video(
     db: AsyncSession = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user)
 ):
-    """Create a new video entry with optional thumbnail"""
+    """Create a new video entry with optional thumbnail (admin only)"""
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -149,12 +149,7 @@ async def get_dashboard_stats(
     db: AsyncSession = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user)
 ):
-    """Get comprehensive dashboard statistics including:
-    - Total counts (users, videos, categories, news)
-    - User growth over last 6 months
-    - Video distribution by category
-    - Recent videos
-    """
+    """Get comprehensive dashboard statistics (admin only)"""
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -240,9 +235,10 @@ async def get_dashboard_stats(
 @router.get("/recent", response_model=List[schemas.VideoResponse])
 async def get_recent_videos(
     limit: int = Query(5, description="Number of recent videos to fetch"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_subscribed_user)
 ):
-    """Get most recently added videos"""
+    """Get most recently added videos (subscribers only)"""
     result = await db.execute(
         select(Video)
         .options(joinedload(Video.category))
@@ -273,7 +269,7 @@ async def update_video(
     db: AsyncSession = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user)
 ):
-    """Update video details and/or thumbnail"""
+    """Update video details and/or thumbnail (admin only)"""
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -349,7 +345,7 @@ async def delete_video(
     db: AsyncSession = Depends(get_db),
     current_user: schemas.UserResponse = Depends(get_current_user)
 ):
-    """Delete a video and its associated resources"""
+    """Delete a video and its associated resources (admin only)"""
     if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -406,9 +402,10 @@ async def search_videos(
     category_id: Optional[uuid.UUID] = Query(None, description="Optional category filter"),
     skip: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(100, ge=1, le=1000, description="Pagination limit"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_subscribed_user)
 ):
-    """Search videos by title with optional category filtering"""
+    """Search videos by title with optional category filtering (subscribers only)"""
     try:
         stmt = (
             select(Video)
@@ -449,9 +446,10 @@ async def read_videos(
     skip: int = 0,
     limit: int = 100,
     category_id: Optional[uuid.UUID] = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_subscribed_user)
 ):
-    """Get paginated list of all videos with optional category filter"""
+    """Get paginated list of all videos with optional category filter (subscribers only)"""
     videos = await crud.get_all_videos(db, skip=skip, limit=limit, category_id=category_id)
     return videos
 
@@ -459,9 +457,10 @@ async def read_videos(
 @router.get("/{video_id}", response_model=schemas.VideoResponse)
 async def read_video(
     video_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_subscribed_user)
 ):
-    """Get video details by ID including like and comment counts"""
+    """Get video details by ID including like and comment counts (subscribers only)"""
     result = await db.execute(
         select(Video)
         .options(joinedload(Video.category), joinedload(Video.likes), joinedload(Video.comments))
@@ -491,7 +490,7 @@ async def share_video(
     request: Request,
     db: AsyncSession = Depends(get_db)
 ):
-    """Generate shareable HTML page for a video"""
+    """Generate shareable HTML page for a video (public)"""
     result = await db.execute(
         select(Video).filter(Video.id == video_id)
     )
